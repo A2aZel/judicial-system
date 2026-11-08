@@ -21,6 +21,7 @@ venv/
 # Raw judicial documents and personal data
 corpus/sudact/
 corpus/mosgorsud/raw/
+corpus/regional/raw/
 docs/claude-chat-transcript.zip
 
 # Local tooling and scratch files
