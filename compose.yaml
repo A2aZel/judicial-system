@@ -1,0 +1,30 @@
+services:
+  api:
+    build:
+      context: .
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8000}:8000"
+    environment:
+      JUDICIAL_AI_APP_ENV: "${JUDICIAL_AI_APP_ENV:-development}"
+      JUDICIAL_AI_API_KEY: "${JUDICIAL_AI_API_KEY:-}"
+      JUDICIAL_AI_LOG_LEVEL: "${JUDICIAL_AI_LOG_LEVEL:-INFO}"
+      JUDICIAL_AI_CORPUS_PATH: /data/analysis.csv
+      JUDICIAL_AI_BERT_MODEL_ID: "${JUDICIAL_AI_BERT_MODEL_ID:-deepvk/RuModernBERT-base}"
+      JUDICIAL_AI_BERT_REVISION: "${JUDICIAL_AI_BERT_REVISION:-8aee6f818db9070b635a549580dc64dcfa03e39a}"
+      JUDICIAL_AI_BERT_RISK_ENABLED: "${JUDICIAL_AI_BERT_RISK_ENABLED:-false}"
+      JUDICIAL_AI_BERT_RISK_CHECKPOINT: "${JUDICIAL_AI_BERT_RISK_CHECKPOINT:-}"
+      JUDICIAL_AI_BERT_RISK_CHECKPOINT_SHA256: "${JUDICIAL_AI_BERT_RISK_CHECKPOINT_SHA256:-}"
+      JUDICIAL_AI_BERT_CACHE_DIR: /models
+    volumes:
+      - "${ANALYSIS_CSV_PATH:-./corpus/sudact/analysis.csv}:/data/analysis.csv:ro"
+      - model_cache:/models
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    restart: unless-stopped
+
+volumes:
+  model_cache:

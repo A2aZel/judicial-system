@@ -1,0 +1,10 @@
+*
+!app.py
+!judicial_ai/
+!judicial_ai/**
+!ui/
+!ui/**
+!requirements.txt
+!requirements-lock.txt
+!pyproject.toml
+!README.md
