@@ -1,0 +1,51 @@
+# Пилотная выборка: ст. 290 УК РФ
+
+Выборка для анализа данных, а не обучающий корпус. Её задача — ответить на вопросы:
+сколько среди документов настоящих приговоров по ст. 290, есть ли УИД для связки с
+апелляцией, какие режимы и наказания встречаются, насколько длинные и как обезличены тексты.
+
+## Источник
+
+[СудАкт](https://sudact.ru/regular/) — агрегатор опубликованных актов судов общей юрисдикции.
+Фильтр: «Статья 290. Получение взятки (УК РФ)», инстанция — первая.
+
+- `sudact/listing.json` — список приговоров из выдачи поиска: по полугодиям, по две случайные
+  страницы на полугодие (10 документов на странице). Собран в браузере скриптом
+  [`tools/sudact_listing.js`](../tools/sudact_listing.js).
+- `sudact/listing_stats.json` — типы всех документов в той же выдаче (приговоры, решения, постановления).
+- `sudact/docs/<id>.txt` — тексты приговоров, `sudact/docs.jsonl` — метаданные.
+  Скачаны [`tools/fetch_sudact_docs.py`](../tools/fetch_sudact_docs.py).
+- `sudact/analysis.csv`, `sudact/summary.json` — разбор
+  [`tools/analyze_sample.py`](../tools/analyze_sample.py).
+- `sudact/appeals_listing.json`, `sudact/appeals_listing_stats.json` — выборка апелляционных
+  документов той же выдачи; `sudact/appeals/` и `sudact/appeals.jsonl` — скачанные тексты
+  (без материалов о мере пресечения с номерами «22К»); `sudact/appeals_analysis.csv`,
+  `sudact/appeals_summary.json` — разбор [`tools/analyze_appeals.py`](../tools/analyze_appeals.py).
+- `sudact/uid_linkage.json` — проверка, находит ли поиск СудАкт апелляцию по УИД приговора.
+
+Итоги выборки сведены в разделе «Данные» файла
+[`judicial-ai-architecture.html`](../judicial-ai-architecture.html).
+
+## Как повторить
+
+```
+python tools/fetch_sudact_docs.py corpus/sudact/listing.json --only-verdicts
+python tools/fetch_sudact_docs.py corpus/sudact/appeals_listing.json --docs-dir corpus/sudact/appeals --meta corpus/sudact/appeals.jsonl
+python tools/analyze_sample.py
+python tools/analyze_appeals.py
+```
+
+Скачивание идёт по одному документу с паузой 4–6 с, пропускает уже скачанное и
+останавливается при капче или трёх ошибках подряд.
+
+## Ограничения
+
+- **Правила сайта.** Поиск СудАкт (`/regular/doc_ajax/`) закрыт для роботов в `robots.txt`;
+  страницы документов открыты. Список собран в объёме пилота с паузами. Для полного корпуса
+  нужно согласование с владельцем сайта или официальный источник.
+- **Покрытие.** За 2021–2024 годы в агрегаторе почти нет документов; за часть лет поиск
+  показывает число найденных, но не отдаёт список.
+- **Персональные данные.** Обезличивание в опубликованных текстах неполное. Тексты не
+  публиковать и не передавать за пределы проекта.
+- **Разбор грубый.** `analyze_sample.py` работает на регулярных выражениях; его точность
+  нужно проверить вручную на части выборки, прежде чем опираться на цифры.

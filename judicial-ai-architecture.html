@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Гибрид kNN + BERT для дел о получении взятки (ст. 290 УК РФ): цель — меньше приговоров, изменённых в апелляции из-за наказания.">
+  <title>Внедрение ИИ в судебную систему</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --paper: #f5f6f7;
+      --surface: #fff;
+      --ink: #1c2833;
+      --muted: #566370;
+      --line: #d3dae0;
+      --accent: #245e79;
+      --accent-soft: #edf3f6;
+    }
+    * { box-sizing: border-box; }
+    html { font-size: 16px; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: "Segoe UI", Arial, sans-serif; line-height: 1.6; }
+    a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: .17em; }
+    a:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+    main { max-width: 1200px; margin: 0 auto; padding: 52px 46px 56px; background: var(--surface); }
+    header { border-bottom: 1px solid var(--line); padding-bottom: 28px; }
+    h1 { max-width: 950px; margin: 0; font-size: clamp(2rem, 4vw, 3.1rem); line-height: 1.15; font-weight: 650; letter-spacing: -.035em; }
+    h2 { margin: 0; font-size: 1.5rem; line-height: 1.3; letter-spacing: -.02em; font-weight: 650; }
+    h3 { margin: 26px 0 10px; font-size: 1.13rem; line-height: 1.4; font-weight: 650; }
+    .card h3 { margin-top: 0; }
+    p { margin: 0 0 14px; }
+    p:last-child { margin-bottom: 0; }
+    section { margin-top: 38px; }
+    .section-heading { display: flex; gap: 12px; align-items: baseline; margin-bottom: 18px; }
+    .section-number { flex: 0 0 25px; color: var(--accent); font-size: .84rem; font-weight: 700; }
+    .two-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+    .card { border: 1px solid var(--line); padding: 22px; min-width: 0; }
+    .card p { font-size: .95rem; }
+    .note { border-left: 3px solid var(--accent); padding: 13px 18px; margin: 20px 0 0; background: var(--accent-soft); font-size: .92rem; }
+    .small { color: var(--muted); font-size: .87rem; }
+    code { font-family: Consolas, "Courier New", monospace; font-size: .9em; overflow-wrap: anywhere; }
+    ul { margin: 0; padding-left: 20px; }
+    li { padding-left: 3px; margin: 10px 0; }
+    li:last-child { margin-bottom: 0; }
+    table { border-collapse: collapse; width: 100%; font-size: .9rem; table-layout: fixed; margin-bottom: 14px; }
+    caption { text-align: left; color: var(--muted); font-size: .86rem; margin-bottom: 12px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 14px; vertical-align: top; text-align: left; overflow-wrap: anywhere; }
+    thead th { color: var(--muted); font-size: .77rem; letter-spacing: .05em; text-transform: uppercase; }
+    th:first-child, td:first-child { padding-left: 0; }
+    th:last-child, td:last-child { padding-right: 0; }
+    .sources { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 22px; font-size: .86rem; }
+    figure { margin: 22px 0; }
+    .diagram-surface { border: 1px solid var(--line); border-radius: 14px; padding: 16px; background: var(--surface); }
+    figcaption { margin: 10px 0 0; color: var(--muted); font-size: .87rem; }
+    .diagram { display: block; width: 100%; height: auto; font-family: inherit; }
+    .diagram text { fill: var(--ink); font-size: 18px; }
+    .diagram .title { font-size: 20px; font-weight: 650; }
+    .diagram .detail { fill: var(--muted); font-size: 16px; }
+    .diagram .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; }
+    .diagram .accent-box { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.5; }
+    .diagram .flow { fill: none; stroke: var(--muted); stroke-width: 1.8; }
+    .diagram .optional { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-dasharray: 6 5; }
+    .diagram .arrow { fill: var(--muted); }
+    .diagram .accent-arrow { fill: var(--accent); }
+    .diagram-mobile { display: none; max-width: 430px; margin: auto; }
+    .bars { display: grid; gap: 4px; max-width: 760px; margin: 0; padding: 0; list-style: none; }
+    .bars li { display: grid; grid-template-columns: 56px minmax(0, 1fr) 64px; gap: 12px; align-items: center; margin: 0; padding: 2px 0; font-size: .88rem; }
+    .bars li:hover { background: var(--accent-soft); }
+    .bar-year { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .bar-track { height: 14px; }
+    .bar { display: block; height: 100%; width: var(--v); background: var(--accent); border-radius: 0 4px 4px 0; }
+    .bar-value { text-align: right; font-variant-numeric: tabular-nums; }
+    .bars .gap .bar-year, .bars .gap .bar-value { color: var(--ink); font-weight: 700; }
+    @media (prefers-color-scheme: dark) {
+      :root { --paper: #13191f; --surface: #1a222b; --ink: #e7edf2; --muted: #abb8c4; --line: #3a4753; --accent: #9acde3; --accent-soft: #24343f; }
+    }
+    @media (max-width: 1000px) {
+      .diagram-desktop { display: none; }
+      .diagram-mobile { display: block; }
+      .diagram-surface { padding: 8px; }
+      .diagram-mobile text { font-size: 17px; }
+      .diagram-mobile .title { font-size: 19px; }
+      .diagram-mobile .detail { font-size: 16px; }
+    }
+    @media (max-width: 760px) {
+      main { padding: 30px 22px 38px; }
+      header { padding-bottom: 24px; }
+      section { margin-top: 30px; }
+      .two-columns { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+      .card { padding: 18px; }
+      h2 { font-size: 1.3rem; }
+      .stack-table, .stack-table tbody, .stack-table tr, .stack-table th, .stack-table td { display: block; width: 100%; }
+      .stack-table thead { display: none; }
+      .stack-table caption { display: block; width: 100%; }
+      .stack-table tr { border-top: 1px solid var(--line); padding: 14px 0; }
+      .stack-table tbody th, .stack-table td { border: 0; padding: 5px 0; }
+      .stack-table tbody th { color: var(--accent); }
+      .stack-table td::before { content: attr(data-label) ": "; font-weight: 600; }
+      .bars li { grid-template-columns: 44px minmax(0, 1fr) 52px; gap: 8px; }
+    }
+    @media print {
+      :root { color-scheme: light; --paper: #fff; --surface: #fff; --ink: #111; --muted: #444; --line: #bbb; --accent: #245e79; --accent-soft: #f3f6f8; }
+      @page { size: A4; margin: 14mm; }
+      body { font-size: 9.5pt; line-height: 1.45; }
+      main { max-width: none; padding: 0; }
+      h1 { font-size: 24pt; }
+      h2 { font-size: 15pt; }
+      h3 { font-size: 11pt; }
+      header { padding-bottom: 18px; }
+      section { margin-top: 22px; }
+      .section-heading { break-after: avoid; }
+      .card, .note, figure, tr { break-inside: avoid; }
+      .two-columns { gap: 15px; }
+      .card { padding: 13px; }
+      .diagram-desktop { display: block !important; }
+      .diagram-mobile { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header><h1>Внедрение ИИ в судебную систему</h1></header>
+
+  <section aria-labelledby="goal-title">
+    <div class="section-heading"><span class="section-number">01</span><h2 id="goal-title">Цель и границы</h2></div>
+    <p>Пилот — дела о получении взятки (<strong>ст. 290 УК РФ</strong>). Цель — меньше приговоров, которые апелляция изменяет или отменяет из-за наказания: неправильное применение уголовного закона и несправедливость приговора (<a href="https://www.consultant.ru/document/cons_doc_LAW_34481/">п. 3–4 ст. 389.15 УПК РФ</a>). Право сторон обжаловать приговор система не ограничивает; число жалоб может снизиться только как следствие. Ошибки в оценке доказательств и в процедуре (п. 1–2) — вне её задач.</p>
+    <p class="note"><strong>Метрика пилота.</strong> Доля приговоров по ст. 290, изменённых в апелляции по основаниям, связанным с наказанием, — до и после внедрения, в сравнении с судами, где системы нет.</p>
+    <h3>Принципы</h3>
+    <ul>
+      <li>Решение принимает судья. Числа считают правила и статистика; LLM только излагает готовый результат.</li>
+      <li>Результат справочный: в мотивировке приговора на него не ссылаются (<a href="https://www.consultant.ru/document/cons_doc_LAW_34481/">ст. 307 УПК РФ</a>).</li>
+      <li>Система работает во время совещания судьи, поэтому только в закрытом локальном контуре: данные дела наружу не уходят (ст. 298 УПК РФ).</li>
+      <li>Показывается диапазон и распределение по аналогам, а не одна цифра, — чтобы не задавать якорь.</li>
+      <li>Приговоры, вынесенные с подсказкой системы, помечаются и не попадают в обучение без отдельной проверки — иначе система будет усиливать собственное смещение.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="architecture-title">
+    <div class="section-heading"><span class="section-number">02</span><h2 id="architecture-title">Архитектура: гибрид kNN + BERT</h2></div>
+    <p>kNN и BERT решают разные задачи. kNN показывает, какие наказания назначали в сопоставимых делах и что из этого устояло в апелляции. BERT оценивает проект наказания: насколько вероятно, что апелляция его изменит, и по какой причине.</p>
+    <figure>
+      <div class="diagram-surface">
+        <svg class="diagram diagram-desktop" viewBox="0 0 1040 820" role="img" aria-labelledby="flow-desktop-title flow-desktop-desc">
+          <title id="flow-desktop-title">Гибрид kNN + BERT для дел по ст. 290</title>
+          <desc id="flow-desktop-desc">Материалы дела проходят предзаполнение моделью RuModernBERT. Судья подтверждает карточку дела. Правовой модуль задаёт границы. kNN находит аналоги и показывает наказания после апелляции; BERT оценивает риск изменения проекта наказания. Модуль значимости считает вклад обстоятельств, результат передаётся судье. Qwen только читает результат и пишет объяснение.</desc>
+          <defs>
+            <marker id="arrow-a-desktop" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0 0L8 4L0 8Z"/></marker>
+            <marker id="optional-a-desktop" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="accent-arrow" d="M0 0L8 4L0 8Z"/></marker>
+          </defs>
+          <rect class="box" x="20" y="20" width="270" height="100" rx="10"/>
+          <text x="40" y="53" class="title">Материалы дела</text>
+          <text x="40" y="82">Обвинительное заключение</text>
+          <text x="40" y="105" class="detail">и документы суда</text>
+          <path class="flow" d="M290 70H340" marker-end="url(#arrow-a-desktop)"/>
+          <rect class="box" x="340" y="20" width="320" height="100" rx="10"/>
+          <text x="360" y="53" class="title">Предзаполнение</text>
+          <text x="360" y="82">Факты · обстоятельства · нормы</text>
+          <text x="360" y="105" class="detail">RuModernBERT: NER + контекст</text>
+          <path class="flow" d="M660 70H710" marker-end="url(#arrow-a-desktop)"/>
+          <rect class="accent-box" x="710" y="20" width="310" height="100" rx="10"/>
+          <text x="730" y="53" class="title">Судья подтверждает</text>
+          <text x="730" y="82">Карточку дела</text>
+          <text x="730" y="105" class="detail">Факты · режим · обстоятельства</text>
+          <path class="flow" d="M865 120V150H520V180" marker-end="url(#arrow-a-desktop)"/>
+          <rect class="accent-box" x="140" y="180" width="760" height="104" rx="10"/>
+          <text x="164" y="214" class="title">Правовой модуль · детерминированные правила</text>
+          <text x="164" y="245">Границы санкции в редакции закона на момент деяния</text>
+          <text x="164" y="271" class="detail">ст. 62, 64, 66, 69, 72, 73 · обязательные доп. наказания · кратный штраф</text>
+          <path class="flow" d="M520 284V315H255V345" marker-end="url(#arrow-a-desktop)"/>
+          <path class="flow" d="M520 315H785V345" marker-end="url(#arrow-a-desktop)"/>
+          <rect class="box" x="20" y="345" width="470" height="180" rx="10"/>
+          <text x="42" y="380" class="title">kNN · дела-аналоги</text>
+          <text x="42" y="413">Фильтры: часть статьи, режим, редакция</text>
+          <text x="42" y="444">Сходство карточек + bge-m3 по фабуле</text>
+          <text x="42" y="475">Наказания после апелляции</text>
+          <text x="42" y="506" class="detail">Диапазон · медиана · какие аналоги изменялись</text>
+          <rect class="box" x="550" y="345" width="470" height="180" rx="10"/>
+          <text x="572" y="380" class="title">BERT · риск апелляции</text>
+          <text x="572" y="413">Вход: карточка + проект наказания</text>
+          <text x="572" y="444">Голова 1: изменят ли приговор</text>
+          <text x="572" y="475">Голова 2: вероятная причина</text>
+          <text x="572" y="506" class="detail">Обучение на парах «приговор → апелляция»</text>
+          <path class="flow" d="M255 525V560H520V590" marker-end="url(#arrow-a-desktop)"/>
+          <path class="flow" d="M785 525V560H520"/>
+          <rect class="accent-box" x="200" y="590" width="640" height="82" rx="10"/>
+          <text x="224" y="623" class="title">Значимость условий и итоговая проверка</text>
+          <text x="224" y="654">Вклад обстоятельств по аналогам · сверка с границами</text>
+          <path class="flow" d="M520 672V700" marker-end="url(#arrow-a-desktop)"/>
+          <rect class="accent-box" x="270" y="700" width="500" height="96" rx="10"/>
+          <text x="294" y="733" class="title">Результат</text>
+          <text x="294" y="764">Диапазон · типичное · риски апелляции</text>
+          <text x="294" y="786" class="detail">Ссылки на аналоги и нормы</text>
+          <path class="flow" d="M770 748H800" marker-end="url(#arrow-a-desktop)"/>
+          <rect class="box" x="800" y="700" width="220" height="96" rx="10"/>
+          <text x="822" y="735" class="title">Судья</text>
+          <text x="822" y="766">Принимает решение</text>
+          <path class="optional" d="M270 748H240" marker-end="url(#optional-a-desktop)"/>
+          <rect class="box" x="20" y="700" width="220" height="96" rx="10"/>
+          <text x="40" y="733" class="title">Qwen3.5-4B</text>
+          <text x="40" y="764">Текст объяснения</text>
+          <text x="40" y="786" class="detail">Только чтение</text>
+        </svg>
+        <svg class="diagram diagram-mobile" viewBox="0 0 430 1140" role="img" aria-labelledby="flow-mobile-title flow-mobile-desc">
+          <title id="flow-mobile-title">Гибрид kNN + BERT для дел по ст. 290</title>
+          <desc id="flow-mobile-desc">Предзаполнение, подтверждение карточки судьёй, правовой модуль, затем параллельно kNN по аналогам и BERT-оценка риска апелляции, значимость условий, результат для судьи. Qwen только читает результат.</desc>
+          <defs>
+            <marker id="arrow-a-mobile" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0 0L8 4L0 8Z"/></marker>
+            <marker id="optional-a-mobile" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="accent-arrow" d="M0 0L8 4L0 8Z"/></marker>
+          </defs>
+          <rect class="box" x="30" y="15" width="360" height="74" rx="10"/>
+          <text x="50" y="45" class="title">Материалы дела</text><text x="50" y="73">Обвинительное заключение</text>
+          <path class="flow" d="M210 89V121" marker-end="url(#arrow-a-mobile)"/>
+          <rect class="box" x="30" y="121" width="360" height="90" rx="10"/>
+          <text x="50" y="152" class="title">Предзаполнение</text><text x="50" y="179">Факты · обстоятельства</text><text x="50" y="202" class="detail">RuModernBERT</text>
+          <path class="flow" d="M210 211V243" marker-end="url(#arrow-a-mobile)"/>
+          <rect class="accent-box" x="30" y="243" width="360" height="74" rx="10"/>
+          <text x="50" y="274" class="title">Судья подтверждает</text><text x="50" y="301">Карточку дела</text>
+          <path class="flow" d="M210 317V349" marker-end="url(#arrow-a-mobile)"/>
+          <rect class="accent-box" x="30" y="349" width="360" height="90" rx="10"/>
+          <text x="50" y="379" class="title">Правовой модуль</text><text x="50" y="406">Границы санкции</text><text x="50" y="429" class="detail">ст. 62, 64, 66, 69, 72, 73</text>
+          <path class="flow" d="M210 439V470H105V490" marker-end="url(#arrow-a-mobile)"/>
+          <path class="flow" d="M210 470H315V490" marker-end="url(#arrow-a-mobile)"/>
+          <rect class="box" x="10" y="490" width="190" height="175" rx="10"/>
+          <text x="25" y="521" class="title">kNN · аналоги</text><text x="25" y="551">Юр. фильтры</text><text x="25" y="576">Сходство дел</text><text x="25" y="606">Наказания после</text><text x="25" y="631">апелляции</text>
+          <rect class="box" x="220" y="490" width="190" height="175" rx="10"/>
+          <text x="235" y="521" class="title">BERT · риск</text><text x="235" y="551">Карточка</text><text x="235" y="576">+ проект</text><text x="235" y="606">Изменят ли</text><text x="235" y="631">и почему</text>
+          <path class="flow" d="M105 665V696H210V727" marker-end="url(#arrow-a-mobile)"/>
+          <path class="flow" d="M315 665V696H210"/>
+          <rect class="accent-box" x="30" y="727" width="360" height="76" rx="10"/>
+          <text x="50" y="757" class="title">Значимость условий</text><text x="50" y="784">Сверка с границами</text>
+          <path class="flow" d="M210 803V835" marker-end="url(#arrow-a-mobile)"/>
+          <rect class="accent-box" x="30" y="835" width="360" height="76" rx="10"/>
+          <text x="50" y="865" class="title">Результат</text><text x="50" y="892">Диапазон · риски · ссылки</text>
+          <path class="flow" d="M210 911V943" marker-end="url(#arrow-a-mobile)"/>
+          <rect class="box" x="70" y="943" width="280" height="62" rx="10"/>
+          <text x="90" y="970" class="title">Судья</text><text x="90" y="995">Принимает решение</text>
+          <path class="optional" d="M390 873H418V1085H390" marker-end="url(#optional-a-mobile)"/>
+          <rect class="box" x="30" y="1047" width="360" height="76" rx="10"/>
+          <text x="50" y="1077" class="title">Qwen3.5-4B · объяснение</text><text x="50" y="1104">Только читает результат</text>
+        </svg>
+      </div>
+      <figcaption>Пунктир — необязательная ветка: судья получает результат и без текста LLM.</figcaption>
+    </figure>
+    <table class="stack-table">
+      <caption>Кто за что отвечает</caption>
+      <colgroup><col style="width: 22%"><col style="width: 50%"><col style="width: 28%"></colgroup>
+      <thead><tr><th scope="col">Компонент</th><th scope="col">Что делает</th><th scope="col">Чего не делает</th></tr></thead>
+      <tbody>
+        <tr>
+          <th scope="row">Предзаполнение</th>
+          <td data-label="Что делает">Извлекает из обвинительного заключения факты, обстоятельства и нормы. Отличает «суд установил» от «сторона заявляет».</td>
+          <td data-label="Чего не делает">Не подтверждает факты.</td>
+        </tr>
+        <tr>
+          <th scope="row">Карточка дела</th>
+          <td data-label="Что делает">Часть статьи, сумма и форма взятки, эпизоды, смягчающие и отягчающие обстоятельства, режим: особый порядок, досудебное соглашение.</td>
+          <td data-label="Чего не делает">Заполняет и подтверждает судья.</td>
+        </tr>
+        <tr>
+          <th scope="row">Правовой модуль</th>
+          <td data-label="Что делает">Санкция в редакции закона на момент деяния, правила ст. 62, 64, 66, 69, 72, 73, обязательные дополнительные наказания, кратный штраф, конфискация. Здесь ловятся ошибки «неправильного применения закона».</td>
+          <td data-label="Чего не делает">Не оценивает справедливость.</td>
+        </tr>
+        <tr>
+          <th scope="row">kNN</th>
+          <td data-label="Что делает">Находит сопоставимые дела и показывает распределение <em>окончательных</em> наказаний — после апелляции. Отмечает аналоги, которые апелляция изменила.</td>
+          <td data-label="Чего не делает">Не обучается прогнозу.</td>
+        </tr>
+        <tr>
+          <th scope="row">BERT · риск</th>
+          <td data-label="Что делает">Оценивает проект наказания судьи (по умолчанию — медиану аналогов): вероятность изменения в апелляции и вероятную причину.</td>
+          <td data-label="Чего не делает">Не предлагает срок.</td>
+        </tr>
+        <tr>
+          <th scope="row">Значимость условий</th>
+          <td data-label="Что делает">Считает вклад каждого обстоятельства: как меняется наказание у аналогов с ним и без него.</td>
+          <td data-label="Чего не делает">Не выводит причинность.</td>
+        </tr>
+        <tr>
+          <th scope="row">Qwen3.5-4B</th>
+          <td data-label="Что делает">Пишет объяснение: диапазон, причины, значимость условий, риски апелляции. Числа и ссылки в тексте сверяет код.</td>
+          <td data-label="Чего не делает">Не меняет числа, не добавляет факты.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note"><strong>Почему для обучения хватает опубликованных актов.</strong> На входе системы — карточка с фактами, которые установил суд. Те же факты суд излагает в приговоре, поэтому карточки из опубликованных приговоров совместимы с карточкой нового дела. Подлинные материалы — обвинительные заключения — нужны только чтобы проверить предзаполнение. Их получают у пилотного суда по соглашению: в открытом доступе их нет.</p>
+  </section>
+
+  <section aria-labelledby="data-title">
+    <div class="section-heading"><span class="section-number">03</span><h2 id="data-title">Данные</h2></div>
+    <figure>
+      <div class="diagram-surface">
+        <svg class="diagram diagram-desktop" viewBox="0 0 1040 345" role="img" aria-labelledby="data-desktop-title data-desktop-desc">
+          <title id="data-desktop-title">Подготовка корпуса</title>
+          <desc id="data-desktop-desc">Сбор приговоров и апелляционных актов, отбор дел, где осуждён по ст. 290, связка первой инстанции и апелляции по УИД или по суду, дате и номеру дела, карточка дела с проверкой юриста, метки окончательного наказания и причины изменения, корпус для kNN и модели риска.</desc>
+          <defs>
+            <marker id="arrow-b-desktop" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0 0L8 4L0 8Z"/></marker>
+          </defs>
+          <rect class="box" x="20" y="20" width="310" height="130" rx="10"/>
+          <text x="40" y="54" class="title">1 · Сбор</text>
+          <text x="40" y="84">СудАкт, сайты судов,</text>
+          <text x="40" y="109">ГАС «Правосудие», ВС РФ</text>
+          <text x="40" y="135" class="detail">Первая инстанция + апелляция</text>
+          <path class="flow" d="M330 85H365" marker-end="url(#arrow-b-desktop)"/>
+          <rect class="box" x="365" y="20" width="310" height="130" rx="10"/>
+          <text x="385" y="54" class="title">2 · Отбор</text>
+          <text x="385" y="84">Осуждён по ст. 290 —</text>
+          <text x="385" y="109">по резолютивной части</text>
+          <text x="385" y="135" class="detail">Убрать 291, 291.1, гражданские</text>
+          <path class="flow" d="M675 85H710" marker-end="url(#arrow-b-desktop)"/>
+          <rect class="box" x="710" y="20" width="310" height="130" rx="10"/>
+          <text x="730" y="54" class="title">3 · Связка инстанций</text>
+          <text x="730" y="84">УИД, а без него —</text>
+          <text x="730" y="109">суд + дата + номер дела</text>
+          <text x="730" y="135" class="detail">Итог — после пересмотра</text>
+          <path class="flow" d="M865 150V175H175V200" marker-end="url(#arrow-b-desktop)"/>
+          <rect class="accent-box" x="20" y="200" width="310" height="130" rx="10"/>
+          <text x="40" y="234" class="title">4 · Карточка дела</text>
+          <text x="40" y="264">LLM-предразметка →</text>
+          <text x="40" y="289">проверка юриста</text>
+          <text x="40" y="315" class="detail">На проверенных — обучение NER</text>
+          <path class="flow" d="M330 265H365" marker-end="url(#arrow-b-desktop)"/>
+          <rect class="box" x="365" y="200" width="310" height="130" rx="10"/>
+          <text x="385" y="234" class="title">5 · Метки</text>
+          <text x="385" y="264">Окончательное наказание</text>
+          <text x="385" y="289">Изменён ли и почему</text>
+          <text x="385" y="315" class="detail">Из апелляционного акта</text>
+          <path class="flow" d="M675 265H710" marker-end="url(#arrow-b-desktop)"/>
+          <rect class="box" x="710" y="200" width="310" height="130" rx="10"/>
+          <text x="730" y="234" class="title">6 · Корпус</text>
+          <text x="730" y="264">Индекс kNN · обучение</text>
+          <text x="730" y="289">модели риска</text>
+          <text x="730" y="315" class="detail">Тест на более поздних годах</text>
+        </svg>
+        <svg class="diagram diagram-mobile" viewBox="0 0 430 770" role="img" aria-labelledby="data-mobile-title data-mobile-desc">
+          <title id="data-mobile-title">Подготовка корпуса</title>
+          <desc id="data-mobile-desc">Шесть шагов: сбор, отбор, связка по УИД, карточка, метки, корпус.</desc>
+          <defs>
+            <marker id="arrow-b-mobile" viewBox="0 0 8 8" refX="8" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path class="arrow" d="M0 0L8 4L0 8Z"/></marker>
+          </defs>
+          <rect class="box" x="30" y="15" width="360" height="96" rx="10"/>
+          <text x="50" y="46" class="title">1 · Сбор</text><text x="50" y="74">СудАкт, сайты судов, ВС</text><text x="50" y="98">Первая инст. + апелляция</text>
+          <path class="flow" d="M210 111V143" marker-end="url(#arrow-b-mobile)"/>
+          <rect class="box" x="30" y="143" width="360" height="96" rx="10"/>
+          <text x="50" y="174" class="title">2 · Отбор</text><text x="50" y="202">Осуждён по ст. 290</text><text x="50" y="226">Без 291, 291.1, гражданских</text>
+          <path class="flow" d="M210 239V271" marker-end="url(#arrow-b-mobile)"/>
+          <rect class="box" x="30" y="271" width="360" height="96" rx="10"/>
+          <text x="50" y="302" class="title">3 · Связка инстанций</text><text x="50" y="330">УИД или суд + дата + номер</text><text x="50" y="354">Итог — после пересмотра</text>
+          <path class="flow" d="M210 367V399" marker-end="url(#arrow-b-mobile)"/>
+          <rect class="accent-box" x="30" y="399" width="360" height="96" rx="10"/>
+          <text x="50" y="430" class="title">4 · Карточка дела</text><text x="50" y="458">LLM-предразметка</text><text x="50" y="482">Проверка юриста → NER</text>
+          <path class="flow" d="M210 495V527" marker-end="url(#arrow-b-mobile)"/>
+          <rect class="box" x="30" y="527" width="360" height="96" rx="10"/>
+          <text x="50" y="558" class="title">5 · Метки</text><text x="50" y="586">Окончательное наказание</text><text x="50" y="610">Изменён ли и почему</text>
+          <path class="flow" d="M210 623V655" marker-end="url(#arrow-b-mobile)"/>
+          <rect class="box" x="30" y="655" width="360" height="96" rx="10"/>
+          <text x="50" y="686" class="title">6 · Корпус</text><text x="50" y="714">Индекс kNN · модель риска</text><text x="50" y="738">Тест на более поздних годах</text>
+        </svg>
+      </div>
+      <figcaption>УИД — уникальный идентификатор дела. В выборке он есть не во всех приговорах и ни в одном апелляционном акте, поэтому запасной ключ связки — суд, дата и номер дела.</figcaption>
+    </figure>
+
+    <h3>Что есть в открытых источниках · проверка 25.10.2026</h3>
+    <p>На <a href="https://sudact.ru/regular/">СудАкт</a> по фильтру «ст. 290 УК РФ» — <strong>17 730</strong> документов первой инстанции, <strong>9 962</strong> апелляционных и <strong>2 514</strong> кассационных. Это документы, а не приговоры по ст. 290: в выдачу попадают дела по ст. 291 и 291.1, гражданские иски, постановления о мере пресечения. Сколько среди них приговоров по ст. 290, покажет разметка выборки.</p>
+    <figure aria-labelledby="coverage-caption">
+      <ul class="bars">
+        <li title="2012: 1 395 документов"><span class="bar-year">2012</span><span class="bar-track"><span class="bar" style="--v: 71.6%"></span></span><span class="bar-value">1 395</span></li>
+        <li title="2013: 1 540 документов"><span class="bar-year">2013</span><span class="bar-track"><span class="bar" style="--v: 79.1%"></span></span><span class="bar-value">1 540</span></li>
+        <li title="2014: 1 947 документов"><span class="bar-year">2014</span><span class="bar-track"><span class="bar" style="--v: 100%"></span></span><span class="bar-value">1 947</span></li>
+        <li title="2015: 1 836 документов"><span class="bar-year">2015</span><span class="bar-track"><span class="bar" style="--v: 94.3%"></span></span><span class="bar-value">1 836</span></li>
+        <li title="2016: 1 628 документов"><span class="bar-year">2016</span><span class="bar-track"><span class="bar" style="--v: 83.6%"></span></span><span class="bar-value">1 628</span></li>
+        <li title="2017: 1 340 документов"><span class="bar-year">2017</span><span class="bar-track"><span class="bar" style="--v: 68.8%"></span></span><span class="bar-value">1 340</span></li>
+        <li title="2018: 927 документов"><span class="bar-year">2018</span><span class="bar-track"><span class="bar" style="--v: 47.6%"></span></span><span class="bar-value">927</span></li>
+        <li title="2019: 1 376 документов"><span class="bar-year">2019</span><span class="bar-track"><span class="bar" style="--v: 70.7%"></span></span><span class="bar-value">1 376</span></li>
+        <li title="2020: 767 документов"><span class="bar-year">2020</span><span class="bar-track"><span class="bar" style="--v: 39.4%"></span></span><span class="bar-value">767</span></li>
+        <li class="gap" title="2021: 25 документов"><span class="bar-year">2021</span><span class="bar-track"><span class="bar" style="--v: 1.3%"></span></span><span class="bar-value">25</span></li>
+        <li class="gap" title="2022: 0 документов"><span class="bar-year">2022</span><span class="bar-track"><span class="bar" style="--v: 0%"></span></span><span class="bar-value">0</span></li>
+        <li class="gap" title="2023: 36 документов"><span class="bar-year">2023</span><span class="bar-track"><span class="bar" style="--v: 1.8%"></span></span><span class="bar-value">36</span></li>
+        <li class="gap" title="2024: 64 документа"><span class="bar-year">2024</span><span class="bar-track"><span class="bar" style="--v: 3.3%"></span></span><span class="bar-value">64</span></li>
+        <li title="2025: 1 237 документов"><span class="bar-year">2025</span><span class="bar-track"><span class="bar" style="--v: 63.5%"></span></span><span class="bar-value">1 237</span></li>
+        <li title="2026, по 25 октября: 263 документа"><span class="bar-year">2026*</span><span class="bar-track"><span class="bar" style="--v: 13.5%"></span></span><span class="bar-value">263</span></li>
+      </ul>
+      <figcaption id="coverage-caption">Документы первой инстанции по ст. 290 на СудАкт по годам. 2021–2024 почти пусты — это пробел агрегатора, а не отсутствие дел. За 2012–2016 годы поиск показывает число документов, но не отдаёт их список. * 2026 — по 25 октября.</figcaption>
+    </figure>
+    <ul>
+      <li><strong>Пробел 2021–2024</strong> закрывают другие источники: сайты судов, ГАС «Правосудие» или выгрузка по соглашению с Судебным департаментом. Портал <code>bsr.sudrf.ru</code> из нашей сети не открылся, сайт ВС РФ доступен.</li>
+      <li><strong>Шум фильтра.</strong> Фильтр по статье ловит любой документ, где упомянута ст. 290: гражданские иски, дела о даче взятки, мошенничество. Отбор — по формулировке осуждения в резолютивной части.</li>
+      <li><strong>Неполная выдача.</strong> За 2012–2016 годы поиск называет число документов, но не отдаёт список; за 2022 год фильтр по статье не срабатывает.</li>
+      <li><strong>Сбор.</strong> Поиск СудАкт закрыт для роботов в <code>robots.txt</code>, на сайте есть капча. Пилотная выборка собрана вручную с паузами; массовую выгрузку нужно согласовать с владельцем или брать данные из официальных источников.</li>
+    </ul>
+
+    <h3>Пилотная выборка · 25.10.2026</h3>
+    <p>Из выдачи СудАкт взято по две случайные страницы на полугодие: 250 документов первой инстанции и 80 апелляционных. Скачаны и разобраны 129 приговоров и 37 апелляционных актов. Разбор — правилами по тексту, проверен вручную на части документов; цифры — ориентир для решений, а не статистика по стране. Данные и скрипты — в папках <code>corpus/</code> и <code>tools/</code>.</p>
+    <table class="stack-table">
+      <caption>Что показала выборка и что это меняет</caption>
+      <colgroup><col style="width: 18%"><col style="width: 44%"><col style="width: 38%"></colgroup>
+      <thead><tr><th scope="col">Наблюдение</th><th scope="col">Цифры</th><th scope="col">Что меняется</th></tr></thead>
+      <tbody>
+        <tr>
+          <th scope="row">Чужие дела</th>
+          <td data-label="Цифры">Приговоров среди документов — 52%, остальное — гражданские иски и постановления. Из 129 приговоров осуждены по ст. 290 — 69 (53%). Остальные — дача взятки (ст. 291, 291.1, 291.2), мошенничество, подлог; 2 оправдательных.</td>
+          <td data-label="Что меняется">Отбор только по формулировке осуждения. Оправдательные приговоры — отдельный класс.</td>
+        </tr>
+        <tr>
+          <th scope="row">Части статьи</th>
+          <td data-label="Цифры">ч. 3 — 46%, ч. 5 — 23%, ч. 2 — 14%, ч. 6 — 4%, ч. 1 — 3%.</td>
+          <td data-label="Что меняется">Для ч. 1 и ч. 6 аналогов мало — kNN должен прямо сообщать «аналогов недостаточно».</td>
+        </tr>
+        <tr>
+          <th scope="row">Наказание и режим</th>
+          <td data-label="Цифры">Запрет занимать должности — 84%, кратный штраф — 41%, несколько преступлений (ст. 69) — 35%, условно — 30%, особый порядок — 28%, ст. 64 — 22%, конфискация — 19%, досудебное соглашение — 7%.</td>
+          <td data-label="Что меняется">Метка — не одно число, а набор: вид, срок, штраф, дополнительные наказания. Режим и ст. 64, 73 — обязательные признаки.</td>
+        </tr>
+        <tr>
+          <th scope="row">Длина</th>
+          <td data-label="Цифры">Медиана — 58 тыс. символов, 90-й процентиль — 192 тыс., максимум — 724 тыс. Около 75% длиннее окна 8 192 токена.</td>
+          <td data-label="Что меняется">Нарезка на окна обязательна — см. «Длинные документы».</td>
+        </tr>
+        <tr>
+          <th scope="row">Обезличивание</th>
+          <td data-label="Цифры">Даты вырезаны в 67% приговоров, суммы («в размере рублей») — в 19%, в отдельных — даже срок. При этом фамилии местами остаются.</td>
+          <td data-label="Что меняется">Сумма взятки может отсутствовать: нужен признак «сумма неизвестна», без подстановки. Корпус — только в закрытом контуре.</td>
+        </tr>
+        <tr>
+          <th scope="row">УИД</th>
+          <td data-label="Цифры">В приговорах 2017–2018 годов — 0 из 30; 2019–2026 годов — 16 из 39 (41%).</td>
+          <td data-label="Что меняется">УИД не может быть единственным ключом связки.</td>
+        </tr>
+        <tr>
+          <th scope="row">Апелляции</th>
+          <td data-label="Цифры">Из 80 апелляционных документов 37 — о мере пресечения (номера «22К»), большинство остальных — продление стражи, УДО и т. п. Жалоб на приговор — 6: 3 изменены, 1 отменён, 2 без изменения. УИД — ни в одном; суд и дата приговора — во всех 6.</td>
+          <td data-label="Что меняется">Апелляции на приговор отбирать по резолютивной части («приговор … изменить / отменить / оставить»), связывать по суду, дате и номеру дела.</td>
+        </tr>
+        <tr>
+          <th scope="row">Связка на СудАкт</th>
+          <td data-label="Цифры">Поиск по УИД 15 приговоров не нашёл ни одной апелляции; 3 УИД не находятся вовсе.</td>
+          <td data-label="Что меняется">Для пар «приговор → апелляция» нужен официальный источник: карточки дел на сайтах судов или выгрузка Судебного департамента.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="note"><strong>Вывод для плана.</strong> Открытых приговоров хватает для карточек и kNN. Пар «приговор → апелляция», на которых учится модель риска, в агрегаторе почти нет. Следующий шаг по данным — проверить сайты областных судов: публикуют ли они апелляционные определения по ст. 290 и видна ли в карточке дела первая инстанция.</p>
+
+    <h3>Сколько размечать вручную</h3>
+    <table class="stack-table">
+      <caption>Оценка — ориентир. Уточняется после пробной разметки 100 документов.</caption>
+      <colgroup><col style="width: 28%"><col style="width: 34%"><col style="width: 38%"></colgroup>
+      <thead><tr><th scope="col">Что</th><th scope="col">Объём</th><th scope="col">Как ускорить</th></tr></thead>
+      <tbody>
+        <tr>
+          <th scope="row">Карточки приговоров для NER</th>
+          <td data-label="Объём">300–500 для обучения + 100–150 для теста</td>
+          <td data-label="Как ускорить">LLM-предразметка, юрист исправляет, а не размечает с нуля.</td>
+        </tr>
+        <tr>
+          <th scope="row">Причины изменения в апелляции</th>
+          <td data-label="Объём">500–1000 апелляционных актов, около 10 категорий</td>
+          <td data-label="Как ускорить">Причину суд уже пишет сам; LLM предлагает категорию, юрист проверяет.</td>
+        </tr>
+        <tr>
+          <th scope="row">Пары «похожи / не похожи»</th>
+          <td data-label="Объём">Для старта не нужны. Для проверки kNN: 200–300 дел × 5 аналогов ≈ 1–1,5 тыс. оценок</td>
+          <td data-label="Как ускорить">Сходство на старте задают правовые фильтры и веса признаков, согласованные с юристами.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section aria-labelledby="models-title">
+    <div class="section-heading"><span class="section-number">04</span><h2 id="models-title">Модели</h2></div>
+    <table class="stack-table">
+      <caption>Кандидаты для пилота. Качество на судебных текстах проверяется на своём корпусе.</caption>
+      <colgroup><col style="width: 22%"><col style="width: 38%"><col style="width: 40%"></colgroup>
+      <thead><tr><th scope="col">Роль</th><th scope="col">Модель</th><th scope="col">Обучение</th></tr></thead>
+      <tbody>
+        <tr>
+          <th scope="row">Предзаполнение и контекст</th>
+          <td data-label="Модель"><a href="https://huggingface.co/deepvk/RuModernBERT-base"><code>deepvk/RuModernBERT-base</code></a>, ревизия <code>patched-tokenizer</code></td>
+          <td data-label="Обучение">Дообучение голов NER и классификации контекста на проверенных карточках.</td>
+        </tr>
+        <tr>
+          <th scope="row">Риск апелляции</th>
+          <td data-label="Модель">Отдельный checkpoint RuModernBERT-base с двумя головами</td>
+          <td data-label="Обучение">Пары «приговор → апелляция». Эталон для сравнения — градиентный бустинг по карточке.</td>
+        </tr>
+        <tr>
+          <th scope="row">Векторы фабулы для kNN</th>
+          <td data-label="Модель"><a href="https://huggingface.co/BAAI/bge-m3"><code>BAAI/bge-m3</code></a>; сравнить с <a href="https://huggingface.co/ai-forever/FRIDA"><code>ai-forever/FRIDA</code></a> и <a href="https://huggingface.co/deepvk/USER-bge-m3"><code>deepvk/USER-bge-m3</code></a></td>
+          <td data-label="Обучение">На старте без обучения; выбор — по качеству поиска аналогов.</td>
+        </tr>
+        <tr>
+          <th scope="row">kNN</th>
+          <td data-label="Модель"><a href="https://scikit-learn.org/stable/modules/neighbors.html"><code>scikit-learn NearestNeighbors</code></a> + своя метрика</td>
+          <td data-label="Обучение">Настройка фильтров, весов признаков и числа соседей.</td>
+        </tr>
+        <tr>
+          <th scope="row">Значимость условий</th>
+          <td data-label="Модель">Сравнение аналогов с условием и без; SHAP для бустинга</td>
+          <td data-label="Обучение">Не требуется.</td>
+        </tr>
+        <tr>
+          <th scope="row">Объяснение</th>
+          <td data-label="Модель"><a href="https://huggingface.co/Qwen/Qwen3.5-4B"><code>Qwen/Qwen3.5-4B</code></a>, локально</td>
+          <td data-label="Обучение">Без дообучения. Получает готовые числа и значимость; числа и ссылки в тексте сверяет код.</td>
+        </tr>
+        <tr>
+          <th scope="row">Предразметка корпуса</th>
+          <td data-label="Модель">Более крупная модель семейства Qwen3.5, локально</td>
+          <td data-label="Обучение">Только офлайн-подготовка данных; результат проверяет юрист. В работе с делами не участвует.</td>
+        </tr>
+        <tr>
+          <th scope="row">OCR, только сканы</th>
+          <td data-label="Модель"><a href="https://github.com/tesseract-ocr/tessdata_best">Tesseract, <code>rus</code> из tessdata_best</a></td>
+          <td data-label="Обучение">Не требуется. При текстовом слое OCR не нужен.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Длинные документы</h3>
+    <p>Приговор по ст. 290 легко занимает 30–40 тыс. токенов — в 3–5 раз больше окна RuModernBERT и bge-m3 (8 192 токена). Обрезать текст нельзя: факты и наказание часто в конце.</p>
+    <ul>
+      <li><strong>Деление по частям.</strong> Вводная, описательно-мотивировочная и резолютивная части обрабатываются отдельно.</li>
+      <li><strong>Резолютивная часть</strong> даёт метки: наказание по каждому эпизоду и итоговое. Разбирается правилами, модель проверяет.</li>
+      <li><strong>Мотивировочная часть</strong> режется на окна по 2–4 тыс. токенов с перекрытием. Найденные факты сводятся на уровне дела, дубли объединяются.</li>
+      <li><strong>Сходство для kNN</strong> считается по эпизодам: вектор фабулы на эпизод, дела сравниваются по лучшему совпадению эпизодов.</li>
+      <li><strong>Без молчаливого обрезания.</strong> Система пишет, какая доля текста обработана; неполный документ уходит на ручную проверку.</li>
+    </ul>
+    <p class="note"><strong>Открытый вопрос — отечественное ПО.</strong> Если для судебной системы обязательны российское ПО и сертификация, Qwen и модели BAAI придётся заменить: на открытые веса GigaChat 3 или YandexGPT-5-Lite для объяснения и на FRIDA для векторов. RuModernBERT (VK) и FRIDA (Сбер) — российские.</p>
+  </section>
+
+  <section aria-labelledby="hardware-title">
+    <div class="section-heading"><span class="section-number">05</span><h2 id="hardware-title">Оборудование</h2></div>
+    <table class="stack-table">
+      <caption>Оценка для пилота; точные цифры — после замеров на корпусе.</caption>
+      <colgroup><col style="width: 22%"><col style="width: 38%"><col style="width: 40%"></colgroup>
+      <thead><tr><th scope="col">Задача</th><th scope="col">Конфигурация</th><th scope="col">Комментарий</th></tr></thead>
+      <tbody>
+        <tr>
+          <th scope="row">Дообучение</th>
+          <td data-label="Конфигурация">1 GPU 24 ГБ VRAM, 64 ГБ RAM, 8–16 ядер CPU, ~100 ГБ NVMe сверх корпуса</td>
+          <td data-label="Комментарий">RuModernBERT (150 млн параметров) с окнами 2–4 тыс. токенов. NER и модель риска обучаются по очереди на одной карте.</td>
+        </tr>
+        <tr>
+          <th scope="row">Работа в суде</th>
+          <td data-label="Конфигурация">1 GPU 16–24 ГБ на узел</td>
+          <td data-label="Комментарий">Qwen3.5-4B занимает около 8–10 ГБ. kNN и правовой модуль работают на CPU.</td>
+        </tr>
+        <tr>
+          <th scope="row">Предразметка корпуса</th>
+          <td data-label="Конфигурация">GPU 48–80 ГБ на время разметки</td>
+          <td data-label="Комментарий">Разовая задача: арендованный сервер в закрытом контуре или квантованная модель.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section aria-labelledby="stack-title">
+    <div class="section-heading"><span class="section-number">06</span><h2 id="stack-title">Стек</h2></div>
+    <div class="two-columns">
+      <article>
+        <h3>Данные и приложение</h3>
+        <p><strong>Python, httpx / Playwright</strong> — сбор с соблюдением <code>robots.txt</code> и лимитов. <strong>PostgreSQL</strong> — карточки, метки, связи по УИД; <strong>pgvector</strong> — векторы. <strong>S3-совместимое хранилище</strong> — исходные документы.</p>
+        <p><strong>FastAPI, Pydantic</strong> — API. <strong>React</strong> — проверка карточки и просмотр результата. <strong>Docker / Linux</strong> — закрытый контур без выхода в интернет.</p>
+      </article>
+      <article>
+        <h3>Модели</h3>
+        <p><strong>PyTorch / Transformers</strong> — RuModernBERT и векторы. <strong>scikit-learn</strong> — kNN; <strong>LightGBM + SHAP</strong> — эталон и значимость. <strong>vLLM</strong> — Qwen. <strong>MLflow</strong> — версии моделей, весов и правил.</p>
+      </article>
+    </div>
+    <div class="sources" aria-label="Первичные источники">
+      <a href="https://www.consultant.ru/document/cons_doc_LAW_34481/">УПК РФ</a>
+      <a href="https://sudact.ru/regular/">СудАкт · суды общей юрисдикции</a>
+      <a href="https://huggingface.co/deepvk/RuModernBERT-base">RuModernBERT-base</a>
+      <a href="https://huggingface.co/BAAI/bge-m3">bge-m3</a>
+      <a href="https://huggingface.co/ai-forever/FRIDA">FRIDA</a>
+      <a href="https://huggingface.co/Qwen/Qwen3.5-4B">Qwen3.5-4B</a>
+    </div>
+  </section>
+</main>
+</body>
+</html>

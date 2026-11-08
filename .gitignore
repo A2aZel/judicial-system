@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Models and runtime data
+models/
+data/
+*.onnx
+*.safetensors
+
+# Raw judicial documents and personal data
+corpus/sudact/
+docs/claude-chat-transcript.zip
+
+# Local tooling and scratch files
+.playwright-mcp/
+work/
+*.log
+.DS_Store
+Thumbs.db
