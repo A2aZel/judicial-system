@@ -27,6 +27,19 @@ python -m pip install --require-hashes -r requirements-dev-lock.txt
 
 По умолчанию читается `corpus/sudact/analysis.csv`. Сырой корпус не копируется в тесты или Docker-образ; `fixtures/synthetic_analysis.csv` полностью синтетический.
 
+## Данные
+
+Общее описание корпуса — `corpus/README.md`. Московские данные собираются из официальных
+открытых наборов, а не из ограниченной robots-поисковой выдачи:
+
+```bash
+python tools/mosgorsud_open_data.py run --limit 10 --pause 4
+```
+
+Команда возобновляет сбор с checkpoint. Источники и правила — `corpus/mosgorsud/README.md`,
+текущие агрегаты — `corpus/mosgorsud/report.md`. Каталог `corpus/mosgorsud/raw/` содержит
+реквизиты дел и персональные данные, исключён из Git и не должен передаваться наружу.
+
 ## Docker / Compose
 
 ```bash
