@@ -211,8 +211,9 @@ Tokenizer сначала считывает полный текст с `truncati
 
 ```bash
 pytest
+node --test tests/test_ui.js
 docker compose config --quiet
 python -c "from fastapi.testclient import TestClient; from app import app; c=TestClient(app); print(c.get('/api/v1/health').json())"
 ```
 
-CI использует hashed dev lock для pytest и отдельно выполняет Docker build. Для production ещё нужны независимая юридическая проверка правил и данных, обучение/калибровка/внешняя валидация и одобрение risk artifact, управление секретами, TLS/reverse proxy, rate limiting, мониторинг, резервное копирование и нагрузочные проверки.
+UI-тесты используют только встроенный Node test runner, отдельных npm-зависимостей нет. CI использует hashed dev lock для pytest, запускает UI regression tests на Node 24 и отдельно выполняет Docker build. Для production ещё нужны независимая юридическая проверка правил и данных, обучение/калибровка/внешняя валидация и одобрение risk artifact, управление секретами, TLS/reverse proxy, rate limiting, мониторинг, резервное копирование и нагрузочные проверки.

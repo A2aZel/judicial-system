@@ -12,9 +12,9 @@ venv/
 .env.*
 !.env.example
 
-# Models and runtime data
-models/
-data/
+# Models and runtime data (root-only; keep judicial_ai/models tracked)
+/models/
+/data/
 *.onnx
 *.safetensors
 
