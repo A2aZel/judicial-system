@@ -6,7 +6,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from playwright.async_api import async_playwright
+try:
+    from playwright.async_api import async_playwright
+except ImportError:
+    async_playwright = None
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PROFILE = ROOT / "work" / "court-browser-profile"
@@ -33,6 +36,8 @@ async def open_courts(
     executable: Path | None,
     headless: bool,
 ) -> None:
+    if async_playwright is None:
+        raise RuntimeError("Playwright is required for interactive mode: python -m pip install playwright")
     profile.mkdir(parents=True, exist_ok=True)
     async with async_playwright() as playwright:
         options: dict[str, Any] = {
