@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "judicial-ai"
-version = "0.1.0"
+version = "0.3.0"
 description = "Structured judicial case analysis without generative models"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"

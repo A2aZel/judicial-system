@@ -230,3 +230,45 @@ python -c "from fastapi.testclient import TestClient; from app import app; c=Tes
 ```
 
 UI-тесты используют только встроенный Node test runner, отдельных npm-зависимостей нет. CI использует hashed dev lock для pytest, запускает UI regression tests на Node 24 и отдельно выполняет Docker build. Для production ещё нужны независимая юридическая проверка правил и данных, обучение/калибровка/внешняя валидация и одобрение risk artifact, управление секретами, TLS/reverse proxy, rate limiting, мониторинг, резервное копирование и нагрузочные проверки.
+
+
+## Dense kNN (`deepvk/USER-bge-m3`)
+
+Production MVP поддерживает precomputed dense retrieval на `deepvk/USER-bge-m3`, revision `0cc6cfe48e260fb0474c753087a69369e88709ae`. Загрузка выполняется через `SentenceTransformer` на CPU по умолчанию, lazy и с `trust_remote_code=False`; batch size по умолчанию равен 4, token window — 1024 (`JUDICIAL_AI_DENSE_MAX_TOKENS`, CLI `--max-tokens`). Для построения index также поддерживается opt-in `--device cuda`; фактическое устройство сохраняется в generation manifest. Qwen не используется, appeal risk остаётся отдельным и выключенным.
+
+### Построение index
+
+После появления `corpus/processed/retrieval_cases.jsonl`:
+
+```bash
+# CPU по умолчанию
+python tools/build_dense_index.py --batch-size 4 --max-tokens 1024 --checkpoint-batch-size 8
+
+# Opt-in CUDA, если установлена совместимая CUDA-сборка PyTorch
+python tools/build_dense_index.py --device cuda --batch-size 8 --max-tokens 1024 --checkpoint-batch-size 8
+```
+
+Завершённые поколения сохраняются в ignored `corpus/processed/dense-index-generations/<generation>/`. `model-card.json` — атомарно заменяемый pointer на активное поколение; index и его manifest всегда публикуются как завершённый комплект, предыдущий pointer сохраняется при ошибке. Legacy `dense-index.npz` + `model-card.json` поддерживается при первом resume и мигрируется на generations.
+
+NPZ содержит строго `embeddings` и `text_hashes`: никаких `case_id`, narrative, punishment, appeal или outcome. Generation manifest хранит model/revision, размерности, агрегированные счётчики, preprocessing и SHA256 source/index, но не идентификаторы или тексты дел.
+
+Новые embeddings сохраняются пакетами в `dense-index-work/<contract-sha256>/checkpoint.npz` с model/revision/preprocessing contract. Ошибка последнего документа или pointer publication не удаляет предыдущие пакеты и активное поколение. Последующий resume продолжает с checkpoint. Полный resume не загружает модель. Изменение любого requested preprocessing, включая `--max-tokens`, или model revision создаёт новый contract и пересобирает embeddings. Записи с дублирующимся narrative используют общий embedding.
+
+Длинный narrative сначала токенизируется с `truncation=false`, затем полностью покрывается token windows с overlap 64. После decode каждый chunk повторно проверяется на token limit до encoder call. Chunk embeddings нормализуются, объединяются взвешенным по длине chunk усреднением и повторно нормализуются. Молчаливого отбрасывания хвоста нет. Записи без `article_parts` или с невалидными полями исключаются; их число сохраняется в `skipped_records` manifest и предупреждениях API.
+
+### Runtime и API
+
+При наличии processed JSONL backend использует его вместо `analysis.csv`; отсутствующий/невалидный processed source приводит к CSV fallback с warning. Сначала применяются прежние hard filters части статьи и process modes. Cosine вычисляется только после фильтров. Query кодируется той же pinned моделью lazy; базовый structured/unranked fallback сохраняется при отсутствии narrative, index, совместимых embeddings или модели.
+
+При отсутствии numeric features distance равен scaled cosine `(1 - dot) / 2`. При наличии structured distance `d` используется понятная комбинация:
+
+```text
+structured_component = 1 - exp(-d)
+distance = dense_weight * ((1 - dot) / 2) + (1 - dense_weight) * structured_component
+```
+
+`dense_weight=0.7` по умолчанию, `1.0` отключает structured вклад, а `0` немедленно возвращает исходный structured result без фильтрации записей или вызова encoder. Наказания, appeal и outcome не входят ни в vector payload, ни в similarity. Cohort statistics по-прежнему рассчитываются по всей hard-filtered cohort, включая записи без embedding; такие записи не участвуют в ranking и учитываются в warning.
+
+`model_info.dense` сообщает repository, revision, `status`, `encoder_status`, `index_status`, `fallback_reason`, `distance_metric` и `dense_weight`. `model_info.knn.ranking_available` отражает фактический выбранный ranking/fallback. API analogues по-прежнему содержат только distance и punishment fields: `case_id`, source, narrative и appeal-метки не возвращаются.
+
+Compose монтирует `${PROCESSED_DIR:-./corpus/processed}` в `/processed:ro`; model cache сохраняется в существующем volume. Переменные `JUDICIAL_AI_DENSE_*` приведены в `.env.example`.

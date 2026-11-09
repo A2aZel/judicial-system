@@ -1,0 +1,260 @@
+import json
+
+from tools import build_training_dataset as mod
+
+
+def source_record(tmp_path, appeal_id="appeal-1", full_pair=True, outcome="changed"):
+    sentence_path = tmp_path / f"{appeal_id}-sentence-source.txt"
+    appeal_path = tmp_path / f"{appeal_id}-appeal-source.txt"
+    sentence_path.write_text("ПРИГОВОР. Суд ПРИГОВОРИЛ к 2 годам лишения свободы. " + "мотивировка " * 30, encoding="utf-8")
+    appeal_path.write_text("ОПРЕДЕЛИЛ: Приговор изменить, " + "доводы " * 30, encoding="utf-8")
+    return {
+        "source": "synthetic",
+        "source_key": appeal_id,
+        "verdict_key": "same-verdict",
+        "source_year": 2024,
+        "article_parts": ["5"],
+        "other_articles": ["286"],
+        "process": mod.process_flags("особый порядок"),
+        "sentence_text": sentence_path.read_text(encoding="utf-8"),
+        "appeal_text": appeal_path.read_text(encoding="utf-8"),
+        "sentence_path": str(sentence_path),
+        "appeal_path": str(appeal_path),
+        "first": {"dateFinal": "01.02.2024", "lastHearingDate": "01.02.2024"},
+        "lower": {"courtName": "Синтетический суд"},
+        "full_pair": full_pair,
+        "outcome": outcome,
+        "status": "confirmed_pair" if full_pair else "not_started",
+    }
+
+
+def test_deterministic_ids_keep_multiple_appeals_on_one_verdict(tmp_path):
+    first = mod.make_case(source_record(tmp_path, "appeal-1"), tmp_path)
+    second = mod.make_case(source_record(tmp_path, "appeal-2"), tmp_path)
+    repeated = mod.make_case(source_record(tmp_path, "appeal-1"), tmp_path)
+    assert first["case_id"] != second["case_id"]
+    assert first["verdict_group_id"] == second["verdict_group_id"]
+    assert first["case_id"] == repeated["case_id"]
+    assert first["verdict_group_id"] == repeated["verdict_group_id"]
+
+
+def test_no_leakage_and_unknown_is_not_negative(tmp_path):
+    case = mod.make_case(source_record(tmp_path, outcome="unknown"), tmp_path)
+    retrieval = mod.retrieval_case(case)
+    assert retrieval is not None
+    assert "appeal" not in retrieval
+    assert "отменить" not in retrieval["facts"]["narrative"]
+    risk = mod.risk_case(case)
+    assert risk["outcome"] == "unknown"
+    assert risk["outcome"] != "negative"
+    assert "appeal" not in risk["features"]
+
+
+def test_unconfirmed_candidate_never_enters_risk(tmp_path):
+    case = mod.make_case(source_record(tmp_path, full_pair=False), tmp_path)
+    assert mod.risk_case(case) is None
+    assert case["appeal"]["full_pair"] is False
+
+
+def test_group_split_keeps_all_appeals_together():
+    rows = [
+        {"case_id": "a", "verdict_group_id": "group"},
+        {"case_id": "b", "verdict_group_id": "group"},
+        {"case_id": "c", "verdict_group_id": "other"},
+    ]
+    mod.assign_splits(rows)
+    assert rows[0]["split"] == rows[1]["split"]
+    assert {row["split"] for row in rows} <= {"train", "validation", "test"}
+
+
+def test_article_labels_are_not_invented(tmp_path):
+    case = mod.make_case(source_record(tmp_path), tmp_path)
+    case["article_parts"] = []
+    case["other_articles"] = []
+    assert mod.article_case(case) is None
+
+
+def test_structured_process_metadata_wins():
+    flags = mod.sudact_process("особый порядок и ст. 73", {"special_order": "False", "art_73": "True"})
+    assert flags["special_order"] is False
+    assert flags["art_73"] is True
+
+
+def integrated_record(tmp_path):
+    record = source_record(tmp_path)
+    record["source"] = "sudact"
+    record["metadata"] = {"special_order": "True", "art_73": "False"}
+    return record
+
+
+def test_build_manifest_schema_sources_and_resume(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "moscow_records", lambda: [integrated_record(tmp_path)])
+    monkeypatch.setattr(mod, "sudact_records", lambda: [])
+    monkeypatch.setattr(mod, "source_hashes", lambda: {"synthetic": 1})
+    manifest = mod.build(tmp_path)
+    assert manifest["schema_version"] == 1
+    assert manifest["counts"]["cases"] == 1
+    assert manifest["counts"]["retrieval_cases"] == 1
+    assert manifest["counts"]["risk_examples"] == 1
+    assert manifest["counts"]["article_examples"] == 1
+    assert manifest["counts"]["by_source"] == {"sudact": 1}
+    assert manifest["counts"]["regional_historical_unavailable"] == 4
+    assert manifest["leakage_rules"]["unknown_is_not_negative"] is True
+    first_created = manifest["created_at"]
+    first_manifest_bytes = (tmp_path / "manifest.json").read_bytes()
+    resumed = mod.build(tmp_path)
+    assert resumed["created_at"] == first_created
+    assert (tmp_path / "manifest.json").read_bytes() == first_manifest_bytes
+
+
+def test_public_manifest_has_no_identifier_lists(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "moscow_records", lambda: [integrated_record(tmp_path)])
+    monkeypatch.setattr(mod, "sudact_records", lambda: [])
+    monkeypatch.setattr(mod, "source_hashes", lambda: {"synthetic": 1})
+    manifest = mod.build(tmp_path)
+    serialized = json.dumps(manifest, ensure_ascii=False)
+    assert "case_id" not in serialized
+    assert "verdict_key" not in serialized
+    assert "appeal-1" not in serialized
+
+
+def test_case_schema_contains_separate_punishment_and_appeal(tmp_path):
+    case = mod.make_case(source_record(tmp_path), tmp_path)
+    for key in ("schema_version", "case_id", "verdict_group_id", "source", "source_year", "article_parts", "other_articles", "process", "facts", "punishment", "appeal", "quality", "split"):
+        assert key in case
+    assert case["punishment"]["prison_months"] == 24
+    assert case["appeal"]["outcome"] == "changed"
+    assert case["quality"]["text_coverage"] == 1
+    assert case["split"] == "unassigned"
+
+
+def test_first_instance_qualification_is_separate_from_appeal_metadata(tmp_path):
+    record = source_record(tmp_path)
+    record["first"]["participants"] = [{"codexArticles": [{"name": "Ст. 290, Ч. 3"}]}]
+    record["appeal_participants"] = [{"codexArticles": [{"name": "Ст. 290, Ч. 5"}]}]
+    case = mod.make_case(record, tmp_path)
+    assert case["article_parts"] == ["3"]
+    assert case["appeal"]["outcome_article_parts"] == ["5"]
+
+
+def moscow_valid_texts():
+    sentence = "ПРИГОВОР Тестового районного суда от 01.02.2024 по делу 1-1/2024. Суд ПРИГОВОРИЛ. " + "мотивировка " * 150
+    appeal = (
+        "АПЕЛЛЯЦИОННОЕ ОПРЕДЕЛЕНИЕ Московского городского суда 10-1/2024 от 01.03.2024. "
+        "Рассмотрена жалоба на приговор Тестового районного суда от 01.02.2024 по делу 1-1/2024. "
+        "ОПРЕДЕЛИЛ: Приговор оставить без изменения, " + "доводы " * 150
+    )
+    return sentence, appeal
+
+
+def moscow_candidate():
+    return {
+        "appeal_id": "synthetic-moscow",
+        "identity": {
+            "uid": "SYNTHETIC-UID", "number": "10-1/2024", "year": 2024,
+            "courtName": "Московский городской суд", "act_date": "01.03.2024", "documentType": "Уголовное дело",
+        },
+        "aliases": [],
+        "lower": [{"number": "1-1/2024", "courtName": "Тестовый районный суд", "courtCode": "FIRST"}],
+        "participants": [],
+        "first": {
+            "_id": "synthetic-first", "uid": "SYNTHETIC-UID", "number": "1-1/2024", "year": 2024,
+            "courtName": "Тестовый районный суд", "dateFinal": "01.02.2024", "lastHearingDate": "01.02.2024",
+            "participants": [],
+        },
+    }
+
+
+def moscow_document(raw_dir, kind, text):
+    binary = raw_dir / "texts" / f"{kind}.bin"
+    text_path = raw_dir / "texts" / f"{kind}.txt"
+    mod.atomic_write(binary, text.encode("utf-8"))
+    mod.atomic_write(text_path, text.encode("utf-8"))
+    digest = mod.sha256_file(binary)
+    return {
+        "path": binary.name, "bytes": binary.stat().st_size, "sha256": digest,
+        "text_path": text_path.name, "text_source_sha256": digest, "text_sha256": mod.sha256_file(text_path),
+    }
+
+
+def test_confirmed_pair_requires_current_sha_and_identity(tmp_path):
+    sentence, appeal = moscow_valid_texts()
+    mod.write_jsonl(tmp_path / "work" / "appeal-candidates.jsonl", [moscow_candidate()])
+    documents = {"sentence": moscow_document(tmp_path, "sentence", sentence), "appeal": moscow_document(tmp_path, "appeal", appeal)}
+    mod.atomic_json(tmp_path / "pair-progress.json", {"synthetic-moscow": {"status": "confirmed_pair", "outcome": "unchanged", "documents": documents, "errors": []}})
+    records = mod.moscow_records(tmp_path)
+    assert records[0]["full_pair"] is True
+    (tmp_path / "texts" / "sentence.txt").write_text("изменённый текст", encoding="utf-8")
+    records = mod.moscow_records(tmp_path)
+    assert records[0]["full_pair"] is False
+    assert records[0]["outcome"] == "unknown"
+
+
+def test_retrieval_excludes_failed_identity(tmp_path):
+    case = mod.make_case(source_record(tmp_path), tmp_path)
+    case["quality"]["identity_errors"] = ["sentence_number_mismatch"]
+    assert mod.retrieval_case(case) is None
+    assert mod.article_case(case) is None
+
+
+def test_cross_source_dedup_uses_text_hash_and_canonical_identity(tmp_path):
+    first = mod.make_case(source_record(tmp_path, "event-1"), tmp_path)
+    second_record = source_record(tmp_path, "event-2")
+    second_record["source"] = "another-source"
+    second = mod.make_case(second_record, tmp_path)
+    assert first["verdict_group_id"] == second["verdict_group_id"]
+    rows = [first, second]
+    mod.assign_splits(rows)
+    assert rows[0]["split"] == rows[1]["split"]
+
+
+def test_split_mode_is_part_of_resume_state(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "moscow_records", lambda: [integrated_record(tmp_path)])
+    monkeypatch.setattr(mod, "sudact_records", lambda: [])
+    monkeypatch.setattr(mod, "source_hashes", lambda: {"synthetic": 1})
+    mod.build(tmp_path)
+    mod.build(tmp_path, split=True)
+    rows = mod.read_jsonl(tmp_path / "cases.jsonl")
+    assert all(row["split"] != "unassigned" for row in rows)
+    mod.build(tmp_path)
+    rows = mod.read_jsonl(tmp_path / "cases.jsonl")
+    assert all(row["split"] == "unassigned" for row in rows)
+
+
+def test_resume_rebuilds_missing_or_empty_outputs(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "moscow_records", lambda: [integrated_record(tmp_path)])
+    monkeypatch.setattr(mod, "sudact_records", lambda: [])
+    monkeypatch.setattr(mod, "source_hashes", lambda: {"synthetic": 1})
+    mod.build(tmp_path)
+    (tmp_path / "cases.jsonl").write_text("", encoding="utf-8")
+    (tmp_path / "dataset-card.json").unlink()
+    mod.build(tmp_path)
+    assert (tmp_path / "dataset-card.json").exists()
+    assert len(mod.read_jsonl(tmp_path / "cases.jsonl")) == 1
+
+
+def test_unknown_process_flags_are_null_not_false():
+    flags = mod.process_flags("Обстоятельства описаны в приложении.")
+    assert set(flags.values()) == {None}
+
+
+def test_prison_months_ignores_age():
+    assert mod.prison_months("Подсудимому 35 лет. Суд приговорил к 2 годам лишения свободы.") == 24
+    assert mod.prison_months("Подсудимому 35 лет. Других данных нет.") is None
+
+
+def test_sudact_appeal_does_not_invent_article_part():
+    row = {"art_290": "True", "parts_290": ""}
+    assert mod.sudact_articles(row["parts_290"]) == []
+
+
+
+def test_partial_documents_do_not_abort_moscow_dataset(tmp_path):
+    sentence, _ = moscow_valid_texts()
+    mod.write_jsonl(tmp_path / "work" / "appeal-candidates.jsonl", [moscow_candidate()])
+    documents = {"sentence": moscow_document(tmp_path, "sentence", sentence)}
+    mod.atomic_json(tmp_path / "pair-progress.json", {"synthetic-moscow": {"status": "download_error", "documents": documents, "errors": ["HTTP 404"]}})
+    records = mod.moscow_records(tmp_path)
+    assert records[0]["full_pair"] is False
+    assert records[0]["outcome"] == "unknown"
+    assert records[0]["sentence_text"] == sentence

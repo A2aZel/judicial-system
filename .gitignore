@@ -22,6 +22,11 @@ venv/
 corpus/sudact/
 corpus/mosgorsud/raw/
 corpus/regional/raw/
+corpus/processed/*
+!corpus/processed/README.md
+!corpus/processed/manifest.json
+!corpus/processed/model-card.json
+!corpus/processed/dataset-card.json
 docs/claude-chat-transcript.zip
 
 # Local tooling and scratch files

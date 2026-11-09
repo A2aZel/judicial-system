@@ -9,6 +9,15 @@ services:
       JUDICIAL_AI_API_KEY: "${JUDICIAL_AI_API_KEY:-}"
       JUDICIAL_AI_LOG_LEVEL: "${JUDICIAL_AI_LOG_LEVEL:-INFO}"
       JUDICIAL_AI_CORPUS_PATH: /data/analysis.csv
+      JUDICIAL_AI_PROCESSED_REPOSITORY_PATH: /processed/retrieval_cases.jsonl
+      JUDICIAL_AI_DENSE_INDEX_PATH: /processed/dense-index.npz
+      JUDICIAL_AI_DENSE_MANIFEST_PATH: /processed/model-card.json
+      JUDICIAL_AI_DENSE_ENABLED: "${JUDICIAL_AI_DENSE_ENABLED:-true}"
+      JUDICIAL_AI_DENSE_MODEL_ID: "${JUDICIAL_AI_DENSE_MODEL_ID:-deepvk/USER-bge-m3}"
+      JUDICIAL_AI_DENSE_MODEL_REVISION: "${JUDICIAL_AI_DENSE_MODEL_REVISION:-0cc6cfe48e260fb0474c753087a69369e88709ae}"
+      JUDICIAL_AI_DENSE_WEIGHT: "${JUDICIAL_AI_DENSE_WEIGHT:-0.7}"
+      JUDICIAL_AI_DENSE_BATCH_SIZE: "${JUDICIAL_AI_DENSE_BATCH_SIZE:-4}"
+      JUDICIAL_AI_DENSE_MAX_TOKENS: "${JUDICIAL_AI_DENSE_MAX_TOKENS:-1024}"
       JUDICIAL_AI_BERT_MODEL_ID: "${JUDICIAL_AI_BERT_MODEL_ID:-deepvk/RuModernBERT-base}"
       JUDICIAL_AI_BERT_REVISION: "${JUDICIAL_AI_BERT_REVISION:-8aee6f818db9070b635a549580dc64dcfa03e39a}"
       JUDICIAL_AI_BERT_RISK_ENABLED: "${JUDICIAL_AI_BERT_RISK_ENABLED:-false}"
@@ -17,6 +26,7 @@ services:
       JUDICIAL_AI_BERT_CACHE_DIR: /models
     volumes:
       - "${ANALYSIS_CSV_PATH:-./corpus/sudact/analysis.csv}:/data/analysis.csv:ro"
+      - "${PROCESSED_DIR:-./corpus/processed}:/processed:ro"
       - model_cache:/models
     read_only: true
     tmpfs:

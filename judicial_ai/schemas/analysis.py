@@ -68,6 +68,7 @@ class ModelInfo(BaseModel):
     engine_version: str
     knn: dict[str, object]
     bert: dict[str, object]
+    dense: dict[str, object]
 
 
 class AnalysisResponse(BaseModel):

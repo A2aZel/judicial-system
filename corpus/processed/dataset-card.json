@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "status": "dataset_only",
+  "intended_use": "Версионируемые тексты для kNN и исследование риска изменения приговора; не production-модель.",
+  "leakage_rules": {
+    "retrieval_excludes_appeal_text_and_labels": true,
+    "risk_requires_confirmed_full_pair": true,
+    "unknown_is_not_negative": true,
+    "unconfirmed_moscow_candidates_excluded_from_risk": true
+  },
+  "limitations": [
+    "Нет оценки качества модели или production readiness.",
+    "Региональные исторические тексты отсутствуют в текущем raw и не включены.",
+    "Незаполненные признаки сохраняются как null/empty, без догадок.",
+    "Split по умолчанию unassigned; групповое разбиение опционально."
+  ]
+}

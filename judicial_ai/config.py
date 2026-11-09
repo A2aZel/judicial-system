@@ -7,6 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_BERT_MODEL_ID = "deepvk/RuModernBERT-base"
 DEFAULT_BERT_REVISION = "8aee6f818db9070b635a549580dc64dcfa03e39a"
+DEFAULT_DENSE_MODEL_ID = "deepvk/USER-bge-m3"
+DEFAULT_DENSE_MODEL_REVISION = "0cc6cfe48e260fb0474c753087a69369e88709ae"
 
 
 class Settings(BaseSettings):
@@ -22,6 +24,15 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     api_key: SecretStr | None = None
     corpus_path: Path = Path("corpus/sudact/analysis.csv")
+    processed_repository_path: Path = Path("corpus/processed/retrieval_cases.jsonl")
+    dense_index_path: Path = Path("corpus/processed/dense-index.npz")
+    dense_manifest_path: Path = Path("corpus/processed/model-card.json")
+    dense_enabled: bool = True
+    dense_model_id: str = DEFAULT_DENSE_MODEL_ID
+    dense_model_revision: str = DEFAULT_DENSE_MODEL_REVISION
+    dense_weight: float = Field(default=0.7, ge=0, le=1)
+    dense_batch_size: int = Field(default=4, ge=1, le=32)
+    dense_max_tokens: int = Field(default=1024, ge=64, le=8192)
     max_request_bytes: int = Field(default=65_536, ge=1024, le=1_048_576)
     default_top_k: int = Field(default=5, ge=1, le=50)
     bert_model_id: str | None = DEFAULT_BERT_MODEL_ID

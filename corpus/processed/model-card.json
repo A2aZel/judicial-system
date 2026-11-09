@@ -1,0 +1,12 @@
+{
+  "generation": "20261109T153021-46fd9464a9de4b3f96527a5a4101d068",
+  "index_path": "dense-index-generations/20261109T153021-46fd9464a9de4b3f96527a5a4101d068/dense-index.npz",
+  "manifest_path": "dense-index-generations/20261109T153021-46fd9464a9de4b3f96527a5a4101d068/model-card.json",
+  "model_id": "deepvk/USER-bge-m3",
+  "model_revision": "0cc6cfe48e260fb0474c753087a69369e88709ae",
+  "pointer": "dense_index_generation_v1",
+  "repository_records": 116,
+  "schema_version": 1,
+  "source_records": 179,
+  "unique_texts": 115
+}
