@@ -57,6 +57,7 @@ python tools/build_training_dataset.py --split
 ## Источники и ограничения
 
 - Moscow: 207 кандидатов, risk labels только для 50 подтверждённых полных пар.
+- Expansion: 138 новых кандидатов вне 2022–2025 и 29 дополнительных подтверждённых пар из `corpus/expansion/raw`. Тот же parser/SHA/identity, без повторения основных 207 и без слияния разных appellate events. Expansion inputs и тексты включены в hash/resume.
 - SudAct: 129 приговоров и 37 апелляций. Для них используются тексты и structured CSV; неподтверждённые связи не становятся risk examples.
 - Regional: в текущем `corpus/regional/raw` есть только robots/access. Исторические 4 полные пары упомянуты в прежнем пилоте, но их тексты отсутствуют, поэтому не включены. В manifest это явно отмечено как `regional_historical_unavailable=4`.
 

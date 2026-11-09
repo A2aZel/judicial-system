@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import tempfile
+import unicodedata
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,8 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.mosgorsud_open_data import verify_pair as verify_moscow_pair
+from tools.mosgorsud_open_data import extract_outcome, number_identity_variants, verify_pair as verify_moscow_pair
 MOSCOW_RAW = ROOT / "corpus" / "mosgorsud" / "raw"
+EXPANSION_RAW = ROOT / "corpus" / "expansion" / "raw"
 SUDACT_RAW = ROOT / "corpus" / "sudact"
 REGIONAL_RAW = ROOT / "corpus" / "regional" / "raw"
 PROCESSED = ROOT / "corpus" / "processed"
@@ -262,6 +264,19 @@ def reason_codes(text: str, outcome: str) -> list[str]:
     return codes
 
 
+def identity_year(identity: dict[str, Any]) -> int | None:
+    value = identity.get("year")
+    if isinstance(value, int) and 1900 <= value <= 2100:
+        return value
+    for key in ("act_date", "dateReg"):
+        text = str(identity.get(key) or "")
+        match = re.match(r"(\d{4})-", text) or re.search(r"(\d{4})$", text)
+        if match:
+            year = int(match.group(1))
+            return year if 1900 <= year <= 2100 else None
+    return None
+
+
 def moscow_records(raw: Path = MOSCOW_RAW) -> list[dict[str, Any]]:
     progress = read_json(raw / "pair-progress.json", {})
     records = []
@@ -281,15 +296,17 @@ def moscow_records(raw: Path = MOSCOW_RAW) -> list[dict[str, Any]]:
             positive, other = article_parts_from_text(sentence_text)
         identity_errors = list(state.get("errors", []))
         integrity = all(document_integrity(raw, documents[kind]) for kind in ("sentence", "appeal")) if all(kind in documents for kind in ("sentence", "appeal")) else False
+        if not integrity:
+            identity_errors.append("integrity_mismatch")
         identity_errors.extend(verify_moscow_pair(candidate, sentence_text, appeal_text) if integrity and sentence_text and appeal_text else [])
         full_pair = state.get("status") == "confirmed_pair" and integrity and not identity_errors
-        outcome = state.get("outcome", "unknown") if full_pair else "unknown"
+        outcome = extract_outcome(appeal_text) if full_pair else "unknown"
         identity = candidate["identity"]
         records.append({
             "source": "mosgorsud",
             "source_key": appeal_id,
             "verdict_key": group_key,
-            "source_year": identity.get("year") or int(str(identity.get("act_date", "0"))[:4]) or None,
+            "source_year": identity_year(identity),
             "article_parts": positive,
             "other_articles": other,
             "process": process_flags(sentence_text),
@@ -361,19 +378,37 @@ def sudact_records(raw: Path = SUDACT_RAW) -> list[dict[str, Any]]:
     return records
 
 
+def normalized_verdict_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text).lower().replace("ё", "е")
+    return re.sub(r"[^0-9a-zа-я]+", "", normalized)
+
+
+def normalized_identity_part(value: Any) -> str:
+    return normalized_verdict_text(str(value or ""))
+
+
+def canonical_case_number(value: Any, year: Any = None) -> str:
+    variants = number_identity_variants(value, year)
+    if not variants:
+        return normalized_identity_part(value)
+    prefix, sequence, numeric_year = sorted(variants)[0]
+    return f"{'/'.join(str(part) for part in prefix)}-{sequence}/{numeric_year}"
+
+
 def canonical_verdict_identity(record: dict[str, Any]) -> str:
     lower = record.get("lower") or {}
     first = record.get("first") or {}
-    return "|".join(str(value or "") for value in (
-        lower.get("courtName") or first.get("courtName"),
-        lower.get("number") or first.get("number"),
-        first.get("dateFinal") or first.get("lastHearingDate"),
+    year = lower.get("year") or first.get("year")
+    return "|".join((
+        normalized_identity_part(lower.get("courtName") or first.get("courtName")),
+        canonical_case_number(lower.get("number") or first.get("number"), year),
+        normalized_identity_part(first.get("dateFinal") or first.get("lastHearingDate")),
     ))
 
 
 def make_case(record: dict[str, Any], processed: Path) -> dict[str, Any]:
     case_id = digest(f"{record['source']}|{record['verdict_key']}|{record['source_key']}", "case_")
-    text_hash = hashlib.sha256(record["sentence_text"].encode("utf-8")).hexdigest()
+    text_hash = hashlib.sha256(normalized_verdict_text(record["sentence_text"]).encode("utf-8")).hexdigest()
     verdict_group_id = digest(f"{text_hash}|{canonical_verdict_identity(record) or record['verdict_key']}", "vg_")
     sentence_text = record["sentence_text"]
     appeal_text = record["appeal_text"]
@@ -488,6 +523,17 @@ def article_case(case: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def deduplicate_retrieval(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result = []
+    seen = set()
+    for case in cases:
+        row = retrieval_case(case)
+        if row and row["verdict_group_id"] not in seen:
+            seen.add(row["verdict_group_id"])
+            result.append(row)
+    return result
+
+
 def assign_splits(rows: list[dict[str, Any]]) -> None:
     for row in rows:
         group = row.get("verdict_group_id", "")
@@ -499,13 +545,16 @@ def source_hashes() -> dict[str, str]:
     paths = [
         MOSCOW_RAW / "pair-progress.json",
         MOSCOW_RAW / "work" / "appeal-candidates.jsonl",
+        EXPANSION_RAW / "pair-progress.json",
+        EXPANSION_RAW / "work" / "appeal-candidates.jsonl",
+        EXPANSION_RAW / "work" / "selection.json",
         SUDACT_RAW / "docs.jsonl",
         SUDACT_RAW / "appeals.jsonl",
         SUDACT_RAW / "analysis.csv",
         SUDACT_RAW / "appeals_analysis.csv",
     ]
     result = {str(path.relative_to(ROOT)): sha256_file(path) for path in paths if path.exists()}
-    for directory in (MOSCOW_RAW / "texts", SUDACT_RAW / "docs", SUDACT_RAW / "appeals"):
+    for directory in (MOSCOW_RAW / "texts", EXPANSION_RAW / "texts", SUDACT_RAW / "docs", SUDACT_RAW / "appeals"):
         if directory.exists():
             for path in sorted(directory.iterdir()):
                 if path.is_file():
@@ -516,7 +565,7 @@ def source_hashes() -> dict[str, str]:
 def output_hashes(processed: Path) -> dict[str, str]:
     names = (
         "cases.jsonl", "retrieval_cases.jsonl", "risk_examples.jsonl", "article_examples.jsonl",
-        "manifest.json", "dataset-card.json", "raw/id-map.jsonl",
+        "manifest.json", "dataset-card.json", "model-card.json", "raw/id-map.jsonl",
     )
     return {name: sha256_file(processed / name) if (processed / name).exists() else "missing" for name in names}
 
@@ -535,6 +584,8 @@ def valid_resume(processed: Path, previous: dict[str, Any], inputs: dict[str, st
     if not cases or len(cases) != counts.get("cases") or len(read_jsonl(processed / "raw" / "id-map.jsonl")) != len(cases):
         return False
     if len(retrieval) != counts.get("retrieval_cases") or len(risks) != counts.get("risk_examples") or len(articles) != counts.get("article_examples"):
+        return False
+    if len({row["verdict_group_id"] for row in retrieval}) != len(retrieval):
         return False
     if any(row.get("schema_version") != 1 for row in cases + retrieval + risks + articles):
         return False
@@ -559,9 +610,12 @@ def build(processed: Path = PROCESSED, split: bool = False, force: bool = False)
         return previous["manifest"]
     records = moscow_records()
     attach_paths(records, MOSCOW_RAW)
+    expansion_records = moscow_records(EXPANSION_RAW)
+    attach_paths(expansion_records, EXPANSION_RAW)
+    records.extend(expansion_records)
     records.extend(sudact_records())
     cases = [make_case(record, processed) for record in records]
-    retrieval = [row for case in cases if (row := retrieval_case(case))]
+    retrieval = deduplicate_retrieval(cases)
     risks = [row for case in cases if (row := risk_case(case))]
     articles = [row for case in cases if (row := article_case(case))]
     if split:

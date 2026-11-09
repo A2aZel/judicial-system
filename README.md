@@ -272,3 +272,7 @@ distance = dense_weight * ((1 - dot) / 2) + (1 - dense_weight) * structured_comp
 `model_info.dense` сообщает repository, revision, `status`, `encoder_status`, `index_status`, `fallback_reason`, `distance_metric` и `dense_weight`. `model_info.knn.ranking_available` отражает фактический выбранный ranking/fallback. API analogues по-прежнему содержат только distance и punishment fields: `case_id`, source, narrative и appeal-метки не возвращаются.
 
 Compose монтирует `${PROCESSED_DIR:-./corpus/processed}` в `/processed:ro`; model cache сохраняется в существующем volume. Переменные `JUDICIAL_AI_DENSE_*` приведены в `.env.example`.
+
+### Независимая оценка качества
+
+Актуальный benchmark — `corpus/processed/evaluation.md`: 79 подтверждённых пар, 75 независимых запросов после дедупликации. Для 19 известных сроков предсказание получено только для 10 (52,6%); для штрафов покрытие 0/5. MAE dense и structured совпадает — 19,2 месяца против 20,4 у cohort median. Это не доказывает преимущество dense или production-качество: нужны больше scored targets, внешняя/временная проверка и юридическая оценка аналогов.

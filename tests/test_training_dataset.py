@@ -88,7 +88,7 @@ def integrated_record(tmp_path):
 
 
 def test_build_manifest_schema_sources_and_resume(tmp_path, monkeypatch):
-    monkeypatch.setattr(mod, "moscow_records", lambda: [integrated_record(tmp_path)])
+    monkeypatch.setattr(mod, "moscow_records", lambda raw=None: [] if raw == mod.EXPANSION_RAW else [integrated_record(tmp_path)])
     monkeypatch.setattr(mod, "sudact_records", lambda: [])
     monkeypatch.setattr(mod, "source_hashes", lambda: {"synthetic": 1})
     manifest = mod.build(tmp_path)
@@ -108,7 +108,7 @@ def test_build_manifest_schema_sources_and_resume(tmp_path, monkeypatch):
 
 
 def test_public_manifest_has_no_identifier_lists(tmp_path, monkeypatch):
-    monkeypatch.setattr(mod, "moscow_records", lambda: [integrated_record(tmp_path)])
+    monkeypatch.setattr(mod, "moscow_records", lambda raw=None: [] if raw == mod.EXPANSION_RAW else [integrated_record(tmp_path)])
     monkeypatch.setattr(mod, "sudact_records", lambda: [])
     monkeypatch.setattr(mod, "source_hashes", lambda: {"synthetic": 1})
     manifest = mod.build(tmp_path)
@@ -181,13 +181,16 @@ def test_confirmed_pair_requires_current_sha_and_identity(tmp_path):
     sentence, appeal = moscow_valid_texts()
     mod.write_jsonl(tmp_path / "work" / "appeal-candidates.jsonl", [moscow_candidate()])
     documents = {"sentence": moscow_document(tmp_path, "sentence", sentence), "appeal": moscow_document(tmp_path, "appeal", appeal)}
-    mod.atomic_json(tmp_path / "pair-progress.json", {"synthetic-moscow": {"status": "confirmed_pair", "outcome": "unchanged", "documents": documents, "errors": []}})
+    mod.atomic_json(tmp_path / "pair-progress.json", {"synthetic-moscow": {"status": "confirmed_pair", "outcome": "changed", "documents": documents, "errors": []}})
     records = mod.moscow_records(tmp_path)
     assert records[0]["full_pair"] is True
     (tmp_path / "texts" / "sentence.txt").write_text("изменённый текст", encoding="utf-8")
     records = mod.moscow_records(tmp_path)
     assert records[0]["full_pair"] is False
     assert records[0]["outcome"] == "unknown"
+    assert "integrity_mismatch" in records[0]["identity_errors"]
+    assert mod.retrieval_case(mod.make_case(records[0], tmp_path)) is None
+    assert mod.article_case(mod.make_case(records[0], tmp_path)) is None
 
 
 def test_retrieval_excludes_failed_identity(tmp_path):
@@ -209,7 +212,7 @@ def test_cross_source_dedup_uses_text_hash_and_canonical_identity(tmp_path):
 
 
 def test_split_mode_is_part_of_resume_state(tmp_path, monkeypatch):
-    monkeypatch.setattr(mod, "moscow_records", lambda: [integrated_record(tmp_path)])
+    monkeypatch.setattr(mod, "moscow_records", lambda raw=None: [] if raw == mod.EXPANSION_RAW else [integrated_record(tmp_path)])
     monkeypatch.setattr(mod, "sudact_records", lambda: [])
     monkeypatch.setattr(mod, "source_hashes", lambda: {"synthetic": 1})
     mod.build(tmp_path)
@@ -222,7 +225,7 @@ def test_split_mode_is_part_of_resume_state(tmp_path, monkeypatch):
 
 
 def test_resume_rebuilds_missing_or_empty_outputs(tmp_path, monkeypatch):
-    monkeypatch.setattr(mod, "moscow_records", lambda: [integrated_record(tmp_path)])
+    monkeypatch.setattr(mod, "moscow_records", lambda raw=None: [] if raw == mod.EXPANSION_RAW else [integrated_record(tmp_path)])
     monkeypatch.setattr(mod, "sudact_records", lambda: [])
     monkeypatch.setattr(mod, "source_hashes", lambda: {"synthetic": 1})
     mod.build(tmp_path)
@@ -258,3 +261,87 @@ def test_partial_documents_do_not_abort_moscow_dataset(tmp_path):
     assert records[0]["full_pair"] is False
     assert records[0]["outcome"] == "unknown"
     assert records[0]["sentence_text"] == sentence
+
+
+def test_expansion_inputs_are_hashed_and_use_same_parser(tmp_path, monkeypatch):
+    calls = []
+    record = integrated_record(tmp_path)
+
+    def fake_moscow_records(raw=None):
+        calls.append(mod.MOSCOW_RAW if raw is None else raw)
+        return [record] if raw == mod.EXPANSION_RAW else []
+
+    monkeypatch.setattr(mod, "moscow_records", fake_moscow_records)
+    monkeypatch.setattr(mod, "sudact_records", lambda: [])
+    monkeypatch.setattr(mod, "source_hashes", lambda: {"synthetic": 1})
+    manifest = mod.build(tmp_path)
+    assert calls == [mod.MOSCOW_RAW, mod.EXPANSION_RAW]
+    assert manifest["counts"]["risk_examples"] == 1
+    assert manifest["counts"]["by_source"] == {"sudact": 1}
+
+
+def test_output_hashes_cover_dataset_and_dense_cards(tmp_path):
+    mod.atomic_json(tmp_path / "dataset-card.json", {"status": "dataset_only"})
+    mod.atomic_json(tmp_path / "model-card.json", {"pointer": "dense_index_generation_v1"})
+    hashes = mod.output_hashes(tmp_path)
+    assert "dataset-card.json" in hashes
+    assert "model-card.json" in hashes
+    assert hashes["dataset-card.json"] != hashes["model-card.json"]
+
+
+def test_expansion_resume_detects_input_hash_change(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "moscow_records", lambda raw=None: [])
+    monkeypatch.setattr(mod, "sudact_records", lambda: [])
+    monkeypatch.setattr(mod, "source_hashes", lambda: {"synthetic": 1})
+    mod.build(tmp_path)
+    monkeypatch.setattr(mod, "source_hashes", lambda: {"synthetic": 2})
+    assert not mod.valid_resume(tmp_path, mod.read_json(tmp_path / "raw" / "build-state.json", {}), {"synthetic": 2}, False)
+
+
+def test_verdict_group_is_stable_to_whitespace_and_ocr(tmp_path):
+    first = mod.make_case(source_record(tmp_path, "event-a"), tmp_path)
+    second_record = source_record(tmp_path, "event-b")
+    second_record["sentence_text"] = second_record["sentence_text"].replace(" ", "  ")
+    second_record["lower"]["courtName"] = second_record["lower"]["courtName"].replace(" ", "  ")
+    second = mod.make_case(second_record, tmp_path)
+    assert first["verdict_group_id"] == second["verdict_group_id"]
+    rows = [first, second]
+    mod.assign_splits(rows)
+    assert rows[0]["split"] == rows[1]["split"]
+
+
+def test_verdict_group_is_stable_to_number_padding(tmp_path):
+    first_record = source_record(tmp_path, "event-a")
+    first_record["lower"]["number"] = "01-004/2021"
+    first = mod.make_case(first_record, tmp_path)
+    second_record = source_record(tmp_path, "event-b")
+    second_record["lower"]["number"] = "1-4/2021"
+    second = mod.make_case(second_record, tmp_path)
+    assert first["verdict_group_id"] == second["verdict_group_id"]
+    rows = [first, second]
+    mod.assign_splits(rows)
+    assert rows[0]["split"] == rows[1]["split"]
+    assert len(mod.deduplicate_retrieval(rows)) == 1
+
+
+def test_outcome_recomputed_from_verified_text(tmp_path):
+    sentence, appeal = moscow_valid_texts()
+    mod.write_jsonl(tmp_path / "work" / "appeal-candidates.jsonl", [moscow_candidate()])
+    documents = {"sentence": moscow_document(tmp_path, "sentence", sentence), "appeal": moscow_document(tmp_path, "appeal", appeal)}
+    mod.atomic_json(tmp_path / "pair-progress.json", {"synthetic-moscow": {"status": "confirmed_pair", "outcome": "changed", "documents": documents, "errors": []}})
+    records = mod.moscow_records(tmp_path)
+    assert records[0]["outcome"] == "unchanged"
+
+
+def test_retrieval_deduplicates_by_verdict_group(tmp_path):
+    first = mod.make_case(source_record(tmp_path, "appeal-a"), tmp_path)
+    second = mod.make_case(source_record(tmp_path, "appeal-b"), tmp_path)
+    rows = mod.deduplicate_retrieval([first, second])
+    assert len(rows) == 1
+    assert rows[0]["verdict_group_id"] == first["verdict_group_id"]
+
+
+def test_identity_year_supports_dd_mm_yyyy_and_unknown():
+    assert mod.identity_year({"act_date": "01.03.2021"}) == 2021
+    assert mod.identity_year({"act_date": None}) is None
+    assert mod.identity_year({"act_date": "not-a-date"}) is None
