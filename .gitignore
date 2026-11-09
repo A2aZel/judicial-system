@@ -23,6 +23,7 @@ corpus/sudact/
 corpus/mosgorsud/raw/
 corpus/regional/raw/
 corpus/expansion/raw/
+corpus/recovery/raw/
 corpus/processed/*
 !corpus/processed/README.md
 !corpus/processed/manifest.json
