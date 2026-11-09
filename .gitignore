@@ -28,6 +28,7 @@ corpus/processed/*
 !corpus/processed/manifest.json
 !corpus/processed/model-card.json
 !corpus/processed/dataset-card.json
+!corpus/processed/evaluation.md
 docs/claude-chat-transcript.zip
 
 # Local tooling and scratch files
