@@ -44,6 +44,8 @@ def test_regional_number_identity_has_boundaries_and_zero_padding():
     assert mod.canonical_number("01-0001/2025") == ("01", 1, 2025)
     assert mod.canonical_number("1-1/25") == ("1", 1, 2025)
     assert mod.numbers_in_text("1-1/2024") != mod.numbers_in_text("1-11/2024")
+    assert ("01", 1, 2024) in mod.numbers_in_text("01 - 0001 / 2024")
+    assert mod.canonical_number("1-39/2025") in mod.numbers_in_text("1-214/2023 1-39/2025 1-96/2024")
 
 
 def test_candidate_uses_act_type_not_only_number():

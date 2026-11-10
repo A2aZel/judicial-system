@@ -18,13 +18,19 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.mosgorsud_open_data import extract_outcome, number_identity_variants, verify_pair as verify_moscow_pair
+from tools.mosgorsud_open_data import extract_outcome, number_identity_variants, parse_date, verify_pair as verify_moscow_pair
 MOSCOW_RAW = ROOT / "corpus" / "mosgorsud" / "raw"
 EXPANSION_RAW = ROOT / "corpus" / "expansion" / "raw"
 SUDACT_RAW = ROOT / "corpus" / "sudact"
 REGIONAL_RAW = ROOT / "corpus" / "regional" / "raw"
+REGIONAL_PAIR_STATUS = ROOT / "corpus" / "pairs" / "rostov-7kas" / "pair-status.jsonl"
 PROCESSED = ROOT / "corpus" / "processed"
 OUTCOMES = {"unchanged", "changed", "cancelled", "unknown"}
+APPEAL_ONLY_ERRORS = {
+    "appeal_type_not_confirmed", "appeal_number_mismatch", "appeal_court_mismatch",
+    "appeal_date_missing", "appeal_date_mismatch", "new_trial", "sentence_number_conflict", "manual_review",
+}
+BUILD_CONTRACT = 4
 
 
 def utc_now() -> str:
@@ -295,10 +301,16 @@ def moscow_records(raw: Path = MOSCOW_RAW) -> list[dict[str, Any]]:
         else:
             positive, other = article_parts_from_text(sentence_text)
         identity_errors = list(state.get("errors", []))
+        retrieval_errors = [error for error in state.get("errors", []) if error not in APPEAL_ONLY_ERRORS]
+        sentence_integrity = document_integrity(raw, documents["sentence"]) if documents.get("sentence") else False
         integrity = all(document_integrity(raw, documents[kind]) for kind in ("sentence", "appeal")) if all(kind in documents for kind in ("sentence", "appeal")) else False
         if not integrity:
             identity_errors.append("integrity_mismatch")
-        identity_errors.extend(verify_moscow_pair(candidate, sentence_text, appeal_text) if integrity and sentence_text and appeal_text else [])
+        if not sentence_integrity:
+            retrieval_errors.append("integrity_mismatch")
+        verification_errors = verify_moscow_pair(candidate, sentence_text, appeal_text) if integrity and sentence_text and appeal_text else []
+        identity_errors.extend(verification_errors)
+        retrieval_errors.extend(error for error in verification_errors if error not in APPEAL_ONLY_ERRORS)
         full_pair = state.get("status") == "confirmed_pair" and integrity and not identity_errors
         outcome = extract_outcome(appeal_text) if full_pair else "unknown"
         identity = candidate["identity"]
@@ -314,6 +326,7 @@ def moscow_records(raw: Path = MOSCOW_RAW) -> list[dict[str, Any]]:
             "appeal_text": appeal_text,
             "appeal_participants": candidate.get("participants") or [],
             "identity_errors": identity_errors,
+            "retrieval_errors": retrieval_errors,
             "first": first,
             "lower": (candidate.get("lower") or [{}])[0],
             "full_pair": full_pair,
@@ -378,6 +391,75 @@ def sudact_records(raw: Path = SUDACT_RAW) -> list[dict[str, Any]]:
     return records
 
 
+def checked_pair_artifact(root: Path, artifact: dict[str, Any]) -> str | None:
+    try:
+        text_path = (root / artifact["text_path"]).resolve()
+        text_path.relative_to(root.resolve())
+        if sha256_file(text_path) != artifact.get("text_sha256"):
+            return None
+        for path_key, hash_key in (("raw_path", "raw_sha256"), ("identity_evidence_path", "identity_evidence_sha256")):
+            if not artifact.get(path_key):
+                continue
+            path = (root / artifact[path_key]).resolve()
+            path.relative_to(root.resolve())
+            if sha256_file(path) != artifact.get(hash_key):
+                return None
+        return text_path.read_text(encoding="utf-8-sig")
+    except (KeyError, OSError, ValueError, UnicodeError):
+        return None
+
+
+def regional_pair_records(status_path: Path = REGIONAL_PAIR_STATUS, root: Path = ROOT) -> list[dict[str, Any]]:
+    analysis_path = SUDACT_RAW / "analysis.csv"
+    analysis = read_csv(analysis_path) if analysis_path.exists() else {}
+    records = []
+    for row in read_jsonl(status_path):
+        if row.get("pair_status") != "confirmed_pair" or row.get("identity_errors") or row.get("outcome") not in OUTCOMES - {"unknown"}:
+            continue
+        sentence = row.get("sentence_artifact") or {}
+        appeal = row.get("appeal_artifact") or {}
+        sentence_text = checked_pair_artifact(root, sentence)
+        appeal_text = checked_pair_artifact(root, appeal)
+        if not sentence_text or not appeal_text:
+            continue
+        metadata = analysis.get(str(sentence.get("record_id", "")).removeprefix("sudact:"), {})
+        date = sentence.get("decision_date")
+        parsed = parse_date(date)
+        first = {
+            "number": sentence.get("case_number"), "year": parsed.year if parsed else None,
+            "courtName": sentence.get("court"), "dateFinal": date,
+        }
+        positive, other = (
+            (sudact_articles(metadata.get("parts_290", "")), sudact_articles(metadata.get("other_articles", "")))
+            if metadata else article_parts_from_text(sentence_text)
+        )
+        source = str(row["source"]) + ("+sudact" if sentence.get("source") == "sudact" else "")
+        records.append({
+            "source": source,
+            "source_key": row["pair_id"],
+            "verdict_key": row["verdict_group_id"],
+            "source_year": identity_year({"act_date": appeal.get("decision_date")}),
+            "article_parts": positive,
+            "other_articles": other,
+            "process": sudact_process(sentence_text, metadata),
+            "sentence_text": sentence_text,
+            "sentence_path": str((root / sentence["text_path"]).resolve()),
+            "appeal_text": appeal_text,
+            "appeal_path": str((root / appeal["text_path"]).resolve()),
+            "appeal_participants": [],
+            "identity_errors": [],
+            "retrieval_errors": [],
+            "provenance_warnings": ["sentence_raw_unavailable"] if not sentence.get("raw_path") else [],
+            "first": first,
+            "lower": {"number": sentence.get("case_number"), "year": parsed.year if parsed else None, "courtName": sentence.get("court")},
+            "full_pair": True,
+            "outcome": row["outcome"],
+            "status": "confirmed_pair",
+            "metadata": metadata,
+        })
+    return records
+
+
 def normalized_verdict_text(text: str) -> str:
     normalized = unicodedata.normalize("NFKC", text).lower().replace("ё", "е")
     return re.sub(r"[^0-9a-zа-я]+", "", normalized)
@@ -395,21 +477,32 @@ def canonical_case_number(value: Any, year: Any = None) -> str:
     return f"{'/'.join(str(part) for part in prefix)}-{sequence}/{numeric_year}"
 
 
+def canonical_court_identity(value: Any) -> str:
+    text = re.sub(r"\s*[-–—]?\s*уголовное(?:\s+дело)?\s*$", "", str(value or ""), flags=re.I)
+    return normalized_identity_part(text)
+
+
+def canonical_date_identity(value: Any) -> str:
+    parsed = parse_date(value)
+    return parsed.date().isoformat() if parsed else normalized_identity_part(value)
+
+
 def canonical_verdict_identity(record: dict[str, Any]) -> str:
     lower = record.get("lower") or {}
     first = record.get("first") or {}
     year = lower.get("year") or first.get("year")
     return "|".join((
-        normalized_identity_part(lower.get("courtName") or first.get("courtName")),
+        canonical_court_identity(lower.get("courtName") or first.get("courtName")),
         canonical_case_number(lower.get("number") or first.get("number"), year),
-        normalized_identity_part(first.get("dateFinal") or first.get("lastHearingDate")),
+        canonical_date_identity(first.get("dateFinal") or first.get("lastHearingDate")),
     ))
 
 
 def make_case(record: dict[str, Any], processed: Path) -> dict[str, Any]:
     case_id = digest(f"{record['source']}|{record['verdict_key']}|{record['source_key']}", "case_")
     text_hash = hashlib.sha256(normalized_verdict_text(record["sentence_text"]).encode("utf-8")).hexdigest()
-    verdict_group_id = digest(f"{text_hash}|{canonical_verdict_identity(record) or record['verdict_key']}", "vg_")
+    identity = canonical_verdict_identity(record)
+    verdict_group_id = digest(identity if all(identity.split("|")) else f"{text_hash}|{identity or record['verdict_key']}", "vg_")
     sentence_text = record["sentence_text"]
     appeal_text = record["appeal_text"]
     sentence_target = processed / "raw" / "texts" / f"{case_id}-sentence.txt"
@@ -434,6 +527,8 @@ def make_case(record: dict[str, Any], processed: Path) -> dict[str, Any]:
         "redaction_flags": text_flags(sentence_text or appeal_text),
         "parser_status": "identity_failed" if identity_errors else record["status"],
         "identity_errors": identity_errors,
+        "retrieval_errors": list(record.get("retrieval_errors", identity_errors)),
+        "provenance_warnings": list(record.get("provenance_warnings") or []),
     }
     return {
         "schema_version": 1,
@@ -468,7 +563,8 @@ def attach_paths(records: list[dict[str, Any]], raw: Path) -> None:
 
 
 def retrieval_case(case: dict[str, Any]) -> dict[str, Any] | None:
-    if not case["facts"]["narrative"] or case["quality"].get("identity_errors"):
+    errors = case["quality"].get("retrieval_errors", case["quality"].get("identity_errors"))
+    if not case["facts"]["narrative"] or errors:
         return None
     return {
         "schema_version": 1,
@@ -508,7 +604,8 @@ def risk_case(case: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def article_case(case: dict[str, Any]) -> dict[str, Any] | None:
-    if not case["facts"]["narrative"] or case["quality"].get("identity_errors") or not (case["article_parts"] or case["other_articles"]):
+    errors = case["quality"].get("retrieval_errors", case["quality"].get("identity_errors"))
+    if not case["facts"]["narrative"] or errors or not (case["article_parts"] or case["other_articles"]):
         return None
     return {
         "schema_version": 1,
@@ -521,6 +618,18 @@ def article_case(case: dict[str, Any]) -> dict[str, Any] | None:
         "other_articles": case["other_articles"],
         "split": case["split"],
     }
+
+
+def unify_verdict_text_groups(cases: list[dict[str, Any]]) -> None:
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for case in cases:
+        text = case["facts"]["narrative"]
+        if text:
+            groups.setdefault(normalized_verdict_text(text), []).append(case)
+    for duplicates in groups.values():
+        group_id = min(case["verdict_group_id"] for case in duplicates)
+        for case in duplicates:
+            case["verdict_group_id"] = group_id
 
 
 def deduplicate_retrieval(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -549,11 +658,22 @@ def source_hashes() -> dict[str, str]:
         EXPANSION_RAW / "work" / "appeal-candidates.jsonl",
         EXPANSION_RAW / "work" / "selection.json",
         SUDACT_RAW / "docs.jsonl",
+        SUDACT_RAW / "text-sha256.json",
         SUDACT_RAW / "appeals.jsonl",
         SUDACT_RAW / "analysis.csv",
         SUDACT_RAW / "appeals_analysis.csv",
+        REGIONAL_PAIR_STATUS,
     ]
     result = {str(path.relative_to(ROOT)): sha256_file(path) for path in paths if path.exists()}
+    for row in read_jsonl(REGIONAL_PAIR_STATUS):
+        if row.get("pair_status") != "confirmed_pair":
+            continue
+        for artifact in (row.get("sentence_artifact"), row.get("appeal_artifact")):
+            for key in ("text_path", "raw_path", "identity_evidence_path"):
+                if artifact and artifact.get(key):
+                    path = (ROOT / artifact[key]).resolve()
+                    path.relative_to(ROOT.resolve())
+                    result[str(path.relative_to(ROOT))] = sha256_file(path)
     for directory in (MOSCOW_RAW / "texts", EXPANSION_RAW / "texts", SUDACT_RAW / "docs", SUDACT_RAW / "appeals"):
         if directory.exists():
             for path in sorted(directory.iterdir()):
@@ -571,6 +691,8 @@ def output_hashes(processed: Path) -> dict[str, str]:
 
 
 def valid_resume(processed: Path, previous: dict[str, Any], inputs: dict[str, str], split: bool) -> bool:
+    if previous.get("build_contract") != BUILD_CONTRACT:
+        return False
     if previous.get("inputs") != inputs or previous.get("split") != split:
         return False
     manifest = previous.get("manifest") or {}
@@ -614,7 +736,9 @@ def build(processed: Path = PROCESSED, split: bool = False, force: bool = False)
     attach_paths(expansion_records, EXPANSION_RAW)
     records.extend(expansion_records)
     records.extend(sudact_records())
+    records.extend(regional_pair_records())
     cases = [make_case(record, processed) for record in records]
+    unify_verdict_text_groups(cases)
     retrieval = deduplicate_retrieval(cases)
     risks = [row for case in cases if (row := risk_case(case))]
     articles = [row for case in cases if (row := article_case(case))]
@@ -637,6 +761,7 @@ def build(processed: Path = PROCESSED, split: bool = False, force: bool = False)
     quality_counts = Counter(case["quality"]["parser_status"] for case in cases)
     manifest = {
         "schema_version": 1,
+        "build_contract": BUILD_CONTRACT,
         "created_at": utc_now(),
         "counts": {
             "cases": len(cases), "retrieval_cases": len(retrieval), "risk_examples": len(risks), "article_examples": len(articles),
@@ -646,6 +771,7 @@ def build(processed: Path = PROCESSED, split: bool = False, force: bool = False)
             "article_parts": dict(sorted(part_counts.items())),
             "quality": dict(sorted(quality_counts.items())),
             "full_pairs": sum(case["appeal"]["full_pair"] for case in cases),
+            "regional_text_only_pairs": sum("sentence_raw_unavailable" in case["quality"]["provenance_warnings"] for case in cases),
             "regional_historical_unavailable": 4,
         },
         "inputs": {
@@ -653,6 +779,7 @@ def build(processed: Path = PROCESSED, split: bool = False, force: bool = False)
             if "/texts/" not in key.replace("\\", "/")
             and "/docs/" not in key.replace("\\", "/")
             and "/appeals/" not in key.replace("\\", "/")
+            and not key.lower().endswith((".html", ".bin", ".txt"))
         },
         "leakage_rules": {
             "retrieval_excludes_appeal_text_and_labels": True,
@@ -670,11 +797,12 @@ def build(processed: Path = PROCESSED, split: bool = False, force: bool = False)
         "limitations": [
             "Нет оценки качества модели или production readiness.",
             "Региональные исторические тексты отсутствуют в текущем raw и не включены.",
+            "У двух региональных приговоров сохранены полный текст и метаданные СудАкта, но нет исходного HTML.",
             "Незаполненные признаки сохраняются как null/empty, без догадок.",
             "Split по умолчанию unassigned; групповое разбиение опционально.",
         ],
     })
-    atomic_json(state_path, {"inputs": inputs, "manifest": manifest, "split": split, "output_hashes": output_hashes(processed)})
+    atomic_json(state_path, {"build_contract": BUILD_CONTRACT, "inputs": inputs, "manifest": manifest, "split": split, "output_hashes": output_hashes(processed)})
     return manifest
 
 

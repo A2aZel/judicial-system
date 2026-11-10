@@ -1,12 +1,14 @@
 {
   "schema_version": 1,
-  "created_at": "2026-11-09T17:02:04.823969+00:00",
+  "build_contract": 4,
+  "created_at": "2026-11-10T09:10:43.018244+00:00",
   "counts": {
-    "cases": 2387,
-    "retrieval_cases": 205,
-    "risk_examples": 79,
-    "article_examples": 193,
+    "cases": 2389,
+    "retrieval_cases": 229,
+    "risk_examples": 77,
+    "article_examples": 223,
     "by_source": {
+      "7kas+sudact": 2,
       "mosgorsud": 2221,
       "sudact": 129,
       "sudact_appeal": 37
@@ -21,28 +23,29 @@
       "2023": 388,
       "2024": 554,
       "2025": 783,
-      "2026": 49
+      "2026": 51
     },
     "risk_outcomes": {
       "cancelled": 7,
-      "changed": 42,
-      "unchanged": 30,
+      "changed": 41,
+      "unchanged": 29,
       "unknown": 0
     },
     "article_parts": {
-      "1": 4,
-      "2": 20,
-      "3": 56,
-      "5": 53,
-      "6": 28
+      "1": 5,
+      "2": 24,
+      "3": 58,
+      "5": 71,
+      "6": 35
     },
     "quality": {
-      "confirmed_pair": 79,
-      "identity_failed": 2142,
+      "confirmed_pair": 77,
+      "identity_failed": 2146,
       "ok": 129,
       "unlinked_appeal": 37
     },
-    "full_pairs": 79,
+    "full_pairs": 77,
+    "regional_text_only_pairs": 2,
     "regional_historical_unavailable": 4
   },
   "inputs": {
@@ -52,9 +55,11 @@
     "corpus\\expansion\\raw\\work\\appeal-candidates.jsonl": "1411ef98146cf646b61c852df50455d6d65bb726c33b971e2f42f5a5353a2284",
     "corpus\\expansion\\raw\\work\\selection.json": "1e2f7cb6891849ca76293cef4c19cea9bd3a49e672c9899d31fe5cf2d519c8ce",
     "corpus\\sudact\\docs.jsonl": "e4e10327d6ef685cbbc297ec1f9960a07d33327f5e9f63e697c63924ceb27241",
+    "corpus\\sudact\\text-sha256.json": "3e24e7c56c8d7718795391f9f2790fc51fef2decd4518139f828803b366de9dc",
     "corpus\\sudact\\appeals.jsonl": "06e1ff80339ae2e0a6768c9a5a70d575f4b6e82fbb9858bc9963a3c35feea6b8",
     "corpus\\sudact\\analysis.csv": "7ae82a5b2b43c93e8c4d9e0b59e036c6b2386238150e56c583149dff46c5e925",
-    "corpus\\sudact\\appeals_analysis.csv": "e8e5e87619ce8fd91c136e8966f190fc5937ace56d14967f8c258023f5676226"
+    "corpus\\sudact\\appeals_analysis.csv": "e8e5e87619ce8fd91c136e8966f190fc5937ace56d14967f8c258023f5676226",
+    "corpus\\pairs\\rostov-7kas\\pair-status.jsonl": "ee3b05fc22175806ee02e1fb62840ea46aad2aa88bdde88f0146cfc6d577d1a3"
   },
   "leakage_rules": {
     "retrieval_excludes_appeal_text_and_labels": true,

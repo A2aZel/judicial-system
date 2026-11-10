@@ -195,7 +195,7 @@ def synthetic_candidate():
 
 
 def valid_pair_texts():
-    sentence = "ПРИГОВОР Тестового районного суда от 01.02.2024 по делу 1-1/2024. Суд ПРИГОВОРИЛ. " + "мотивировка " * 150
+    sentence = "ПРИГОВОР Тестового районного суда от 01.02.2024 по делу 1-1/2024. Суд установил обстоятельства. Суд ПРИГОВОРИЛ. " + "мотивировка " * 150
     appeal = (
         "АПЕЛЛЯЦИОННОЕ ОПРЕДЕЛЕНИЕ Московского городского суда 10-1/2024 от 01.03.2024. "
         "Рассмотрена жалоба на приговор Тестового районного суда от 01.02.2024 по делу 1-1/2024. "
@@ -209,6 +209,8 @@ def test_pair_verification_requires_both_full_texts_and_identity():
     assert mod.verify_pair(synthetic_candidate(), sentence, appeal) == []
     assert "appeal_date_mismatch" in mod.verify_pair(synthetic_candidate(), sentence, appeal.replace("01.03.2024", "02.03.2024"))
     assert mod.verify_pair(synthetic_candidate(), "ПРИГОВОР", appeal) == ["text_too_short"]
+    abridged = sentence.replace("Суд установил обстоятельства. ", "")
+    assert "sentence_full_text_not_confirmed" in mod.verify_pair(synthetic_candidate(), abridged, appeal)
     procedural = appeal.replace("на приговор", "на постановление о восстановлении срока обжалования приговора")
     assert "appeal_type_not_confirmed" in mod.verify_pair(synthetic_candidate(), sentence, procedural)
 
@@ -729,3 +731,30 @@ def test_conflicting_lower_number_in_operative_part_is_rejected():
     )
     errors = mod.verify_pair(synthetic_candidate(), sentence, appeal)
     assert "sentence_number_conflict" in errors
+
+
+def test_ocr_spaced_sentence_change_takes_priority_over_unchanged_remainder():
+    text = (
+        "ОПРЕДЕЛИЛ: п риговор районного суда изменить. "
+        "В остальной части этот же приговор оставить без изменения."
+    )
+    assert mod.extract_outcome(text) == "changed"
+
+
+def test_return_of_presentation_without_consideration_is_not_sentence_outcome():
+    text = (
+        "ОПРЕДЕЛИЛ: определение о возвращении без рассмотрения апелляционного представления "
+        "оставить без изменения. Приговор районного суда оставить без изменения."
+    )
+    assert mod.extract_outcome(text) == "unknown"
+
+
+def test_new_court_hearing_and_proceedings_are_not_confirmed_pairs():
+    sentence, appeal = valid_pair_texts()
+    for disposition in (
+        "Приговор отменить, дело передать на новое судебное рассмотрение.",
+        "Приговор изменить, дело в части ареста передать на новое судебное разбирательство.",
+    ):
+        changed = appeal.replace("Приговор оставить без изменения,", disposition)
+        assert mod.new_trial_disposition(changed)
+        assert "new_trial" in mod.verify_pair(synthetic_candidate(), sentence, changed)

@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "candidates": 298,
+  "pair_status_rows": 298,
+  "statuses": {
+    "missing_appeal": 7,
+    "missing_sentence": 289,
+    "rejected_new_trial": 2
+  },
+  "confirmed_pairs": 0,
+  "missing_sentence": 289,
+  "missing_appeal": 7,
+  "identity_failures": 0,
+  "duplicates": 0,
+  "rejected_new_trial": 2,
+  "rejected_procedural": 0,
+  "artifact_invalid": 0,
+  "local_second_text_links": 0,
+  "confirmed_outcomes": {
+    "unchanged": 0,
+    "changed": 0,
+    "cancelled": 0,
+    "unknown": 0
+  },
+  "downloaded_appeal_outcomes": {
+    "unchanged": 58,
+    "changed": 181,
+    "cancelled": 48,
+    "unknown": 2
+  },
+  "by_source": {
+    "bashkortostan": {
+      "candidates": 129,
+      "pair_status_rows": 129,
+      "statuses": {
+        "missing_appeal": 6,
+        "missing_sentence": 122,
+        "rejected_new_trial": 1
+      },
+      "confirmed_outcomes": {
+        "unchanged": 0,
+        "changed": 0,
+        "cancelled": 0,
+        "unknown": 0
+      },
+      "access_status": "robots_blocked"
+    },
+    "tatarstan": {
+      "candidates": 99,
+      "pair_status_rows": 99,
+      "statuses": {
+        "missing_sentence": 99
+      },
+      "confirmed_outcomes": {
+        "unchanged": 0,
+        "changed": 0,
+        "cancelled": 0,
+        "unknown": 0
+      },
+      "access_status": "robots_blocked"
+    },
+    "novosibirsk": {
+      "candidates": 70,
+      "pair_status_rows": 70,
+      "statuses": {
+        "missing_appeal": 1,
+        "missing_sentence": 68,
+        "rejected_new_trial": 1
+      },
+      "confirmed_outcomes": {
+        "unchanged": 0,
+        "changed": 0,
+        "cancelled": 0,
+        "unknown": 0
+      },
+      "access_status": "robots_blocked"
+    }
+  },
+  "processed_dataset_included": false
+}

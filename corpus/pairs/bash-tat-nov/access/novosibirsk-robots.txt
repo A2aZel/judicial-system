@@ -1,0 +1,9 @@
+User-agent: *
+Disallow: /admin.php
+Disallow: /cnt.php
+Disallow: /cntbg.php
+Disallow: /*&cl=1
+Disallow: /*&nc=1
+Disallow: /*name=sud_delo
+Disallow: /*name=bsr
+Disallow: /*name=voting

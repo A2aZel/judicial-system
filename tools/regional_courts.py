@@ -285,7 +285,8 @@ def canonical_number(value: Any) -> tuple[str, int, int] | None:
 
 def numbers_in_text(text: str) -> set[tuple[str, int, int]]:
     result = set()
-    for match in re.finditer(r"(?<![\d/])(\d+(?:/\d+)?)-(\d+)/(\d{2,4})(?![\d/])", re.sub(r"\s+", "", text)):
+    normalized = re.sub(r"\s*([/-])\s*", r"\1", text)
+    for match in re.finditer(r"(?<![\d/])(\d+(?:/\d+)?)-(\d+)/(\d{2,4})(?![\d/])", normalized):
         canonical = canonical_number(match.group(0))
         if canonical:
             result.add(canonical)

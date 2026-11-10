@@ -24,6 +24,9 @@ corpus/mosgorsud/raw/
 corpus/regional/raw/
 corpus/expansion/raw/
 corpus/recovery/raw/
+corpus/pairs/raw/
+corpus/pairs/**/raw/
+corpus/pairs/**/pair-status.jsonl
 corpus/processed/*
 !corpus/processed/README.md
 !corpus/processed/manifest.json

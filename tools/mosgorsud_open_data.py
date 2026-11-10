@@ -1049,12 +1049,20 @@ def operative_text(appeal_text: str) -> str | None:
     return normalized[markers[-1].start():] if markers else None
 
 
+def new_trial_disposition(appeal_text: str) -> bool:
+    operative = operative_text(appeal_text) or ""
+    hearing = r"на\s+нов\w*\s+(?:судебн\w*\s+)?(?:рассмотрен\w*|разбирательств\w*)"
+    operative = re.sub(r"без\s+направления\s+[^.]{0,100}" + hearing, "", operative)
+    return bool(re.search(r"направ\w*\s+[^.]{0,100}" + hearing + "|" + hearing, operative))
+
+
 def extract_outcome(appeal_text: str) -> str:
     operative = operative_text(appeal_text)
     if operative is None:
         return "unknown"
     outcomes = set()
-    pattern = r"(?<![а-я])приговор(?![а-я])(.{0,350}?)(оставить\s+без\s+изменения|изменить|отменить)"
+    sentence = r"п\s*р\s*и\s*г\s*о\s*в\s*о\s*р"
+    pattern = rf"(?<![а-я]){sentence}(?![а-я])(.{{0,350}}?)(оставить\s+без\s+изменения|изменить|отменить)"
     for match in re.finditer(pattern, operative, re.S):
         body = match.group(1)
         if re.search(r"постановлен|определен|арест|мер[аы]\s*пресечения|восстанов|срок\w*\s+обжалован|обжалования\s+срока", body):
@@ -1064,6 +1072,8 @@ def extract_outcome(appeal_text: str) -> str:
         return "cancelled"
     if "изменить" in outcomes:
         return "changed"
+    if outcomes == {"оставитьбезизменения"} and re.search(r"возвращени\w*.{0,100}без\s+рассмотрен\w*|без\s+рассмотрен\w*.{0,100}возвращени\w*", operative, re.S):
+        return "unknown"
     if "оставитьбезизменения" in outcomes:
         return "unchanged"
     return "unknown"
@@ -1081,8 +1091,12 @@ def verify_pair(candidate: dict[str, Any], sentence_text: str, appeal_text: str)
     appeal_compact = compact_text(appeal_text)
     if "приговор" not in sentence_compact or "приговорил" not in sentence_compact:
         errors.append("sentence_type_not_confirmed")
+    if "установил" not in sentence_compact:
+        errors.append("sentence_full_text_not_confirmed")
     if "апелляцион" not in appeal_compact or "наприговор" not in appeal_compact or not has_sentence_operative(appeal_text):
         errors.append("appeal_type_not_confirmed")
+    if new_trial_disposition(appeal_text):
+        errors.append("new_trial")
     first = candidate["first"]
     expected_lower_numbers = number_identity_variants(first.get("number"), first.get("year"))
     if not expected_lower_numbers or not expected_lower_numbers & extract_case_numbers(sentence_text, first.get("year")):

@@ -1,0 +1,47 @@
+{
+  "bashkortostan": {
+    "status": "robots_blocked",
+    "checked_at": "2026-11-10T07:32:12.739341+00:00",
+    "rules": [
+      "/admin.php",
+      "/cnt.php",
+      "/cntbg.php",
+      "/*&cl=1",
+      "/*&nc=1",
+      "/*name=sud_delo",
+      "/*name=bsr",
+      "/*name=voting"
+    ],
+    "robots_sha256": "6c920f983cbef2b83130ddd891bb86846b9d4967ca27c758a0d57fba7066813b"
+  },
+  "tatarstan": {
+    "status": "robots_blocked",
+    "checked_at": "2026-11-10T07:32:17.411004+00:00",
+    "rules": [
+      "/admin.php",
+      "/cnt.php",
+      "/cntbg.php",
+      "/*&cl=1",
+      "/*&nc=1",
+      "/*name=sud_delo",
+      "/*name=bsr",
+      "/*name=voting"
+    ],
+    "robots_sha256": "6c920f983cbef2b83130ddd891bb86846b9d4967ca27c758a0d57fba7066813b"
+  },
+  "novosibirsk": {
+    "status": "robots_blocked",
+    "checked_at": "2026-11-10T07:32:22.080631+00:00",
+    "rules": [
+      "/admin.php",
+      "/cnt.php",
+      "/cntbg.php",
+      "/*&cl=1",
+      "/*&nc=1",
+      "/*name=sud_delo",
+      "/*name=bsr",
+      "/*name=voting"
+    ],
+    "robots_sha256": "6c920f983cbef2b83130ddd891bb86846b9d4967ca27c758a0d57fba7066813b"
+  }
+}

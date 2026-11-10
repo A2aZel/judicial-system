@@ -1,6 +1,13 @@
 import json
 
+import pytest
+
 from tools import build_training_dataset as mod
+
+
+@pytest.fixture(autouse=True)
+def isolate_regional_pairs(monkeypatch):
+    monkeypatch.setattr(mod, "regional_pair_records", lambda: [])
 
 
 def source_record(tmp_path, appeal_id="appeal-1", full_pair=True, outcome="changed"):
@@ -138,7 +145,7 @@ def test_first_instance_qualification_is_separate_from_appeal_metadata(tmp_path)
 
 
 def moscow_valid_texts():
-    sentence = "ПРИГОВОР Тестового районного суда от 01.02.2024 по делу 1-1/2024. Суд ПРИГОВОРИЛ. " + "мотивировка " * 150
+    sentence = "ПРИГОВОР Тестового районного суда от 01.02.2024 по делу 1-1/2024. Суд установил обстоятельства. Суд ПРИГОВОРИЛ. " + "мотивировка " * 150
     appeal = (
         "АПЕЛЛЯЦИОННОЕ ОПРЕДЕЛЕНИЕ Московского городского суда 10-1/2024 от 01.03.2024. "
         "Рассмотрена жалоба на приговор Тестового районного суда от 01.02.2024 по делу 1-1/2024. "
@@ -195,7 +202,7 @@ def test_confirmed_pair_requires_current_sha_and_identity(tmp_path):
 
 def test_retrieval_excludes_failed_identity(tmp_path):
     case = mod.make_case(source_record(tmp_path), tmp_path)
-    case["quality"]["identity_errors"] = ["sentence_number_mismatch"]
+    case["quality"]["retrieval_errors"] = ["sentence_number_mismatch"]
     assert mod.retrieval_case(case) is None
     assert mod.article_case(case) is None
 
@@ -345,3 +352,92 @@ def test_identity_year_supports_dd_mm_yyyy_and_unknown():
     assert mod.identity_year({"act_date": "01.03.2021"}) == 2021
     assert mod.identity_year({"act_date": None}) is None
     assert mod.identity_year({"act_date": "not-a-date"}) is None
+
+
+def test_appeal_failure_does_not_invalidate_retrieval_sentence(tmp_path):
+    record = source_record(tmp_path, full_pair=False)
+    record["identity_errors"] = ["appeal_type_not_confirmed"]
+    record["retrieval_errors"] = []
+    case = mod.make_case(record, tmp_path)
+    assert mod.risk_case(case) is None
+    assert mod.retrieval_case(case) is not None
+
+
+def test_identical_texts_share_group_even_with_different_metadata_aliases(tmp_path):
+    first_record = source_record(tmp_path, "event-a")
+    first_record["lower"].update({"number": "01-0001/2024", "courtName": "Синтетический суд - Уголовное"})
+    first = mod.make_case(first_record, tmp_path)
+    second_record = source_record(tmp_path, "event-b")
+    second_record["source"] = "another-source"
+    second_record["lower"].update({"number": "1-1/24", "year": 2024})
+    second_record["first"]["dateFinal"] = "2024-02-01"
+    second = mod.make_case(second_record, tmp_path)
+    assert mod.canonical_verdict_identity(first_record) == mod.canonical_verdict_identity(second_record)
+    second_record["lower"]["courtName"] = "Алиас без совпадения"
+    second = mod.make_case(second_record, tmp_path)
+    rows = [first, second]
+    mod.unify_verdict_text_groups(rows)
+    assert rows[0]["verdict_group_id"] == rows[1]["verdict_group_id"]
+    mod.assign_splits(rows)
+    assert rows[0]["split"] == rows[1]["split"]
+    assert len(mod.deduplicate_retrieval(rows)) == 1
+
+
+def test_resume_rejects_previous_processing_contract():
+    assert not mod.valid_resume(mod.Path("unused"), {"build_contract": mod.BUILD_CONTRACT - 1}, {}, False)
+
+
+def test_regional_pair_adapter_rechecks_artifacts_and_text_only_provenance(tmp_path, monkeypatch):
+    monkeypatch.undo()
+    sentence, appeal = moscow_valid_texts()
+    artifacts = []
+    for kind, text in (("sentence", sentence), ("appeal", appeal)):
+        path = tmp_path / "corpus" / f"{kind}.txt"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        artifacts.append({
+            "record_id": "sudact:synthetic", "source": "sudact" if kind == "sentence" else "7kas",
+            "text_path": f"corpus/{kind}.txt", "text_sha256": mod.sha256_file(path),
+            "raw_path": None, "court": "Тестовый районный суд", "case_number": "1-1/2024",
+            "decision_date": "2024-02-01" if kind == "sentence" else "2024-03-01",
+        })
+    row = {
+        "pair_status": "confirmed_pair", "identity_errors": [], "outcome": "unchanged",
+        "source": "7kas", "pair_id": "synthetic-pair", "verdict_group_id": "synthetic-group",
+        "sentence_artifact": artifacts[0], "appeal_artifact": artifacts[1],
+    }
+    status = tmp_path / "status.jsonl"
+    mod.write_jsonl(status, [row])
+    records = mod.regional_pair_records(status, tmp_path)
+    assert len(records) == 1
+    assert records[0]["source"] == "7kas+sudact"
+    assert records[0]["provenance_warnings"] == ["sentence_raw_unavailable"]
+    (tmp_path / "corpus/sentence.txt").write_text("damaged", encoding="utf-8")
+    assert mod.regional_pair_records(status, tmp_path) == []
+
+
+def test_saved_appeal_error_does_not_exclude_valid_sentence(tmp_path):
+    sentence, appeal = moscow_valid_texts()
+    mod.write_jsonl(tmp_path / "work/appeal-candidates.jsonl", [moscow_candidate()])
+    documents = {"sentence": moscow_document(tmp_path, "sentence", sentence), "appeal": moscow_document(tmp_path, "appeal", appeal)}
+    mod.atomic_json(tmp_path / "pair-progress.json", {"synthetic-moscow": {"status": "confirmed_pair", "documents": documents, "errors": ["appeal_type_not_confirmed"]}})
+    record = mod.moscow_records(tmp_path)[0]
+    assert record["full_pair"] is False
+    assert record["retrieval_errors"] == []
+    assert mod.retrieval_case(mod.make_case(record, tmp_path)) is not None
+
+
+def test_ocr_variants_with_same_complete_identity_share_group(tmp_path):
+    first_record = source_record(tmp_path, "event-a")
+    first_record["lower"]["number"] = "1-1/2024"
+    first = mod.make_case(first_record, tmp_path)
+    changed_record = source_record(tmp_path, "event-b")
+    changed_record["lower"]["number"] = "1-1/2024"
+    changed_record["sentence_text"] = changed_record["sentence_text"].replace("мотивировка", "мотивировкa", 1)
+    second = mod.make_case(changed_record, tmp_path)
+    assert first["facts"]["narrative"] != second["facts"]["narrative"]
+    assert first["verdict_group_id"] == second["verdict_group_id"]
+    rows = [first, second]
+    mod.assign_splits(rows)
+    assert rows[0]["split"] == rows[1]["split"]
+    assert len(mod.deduplicate_retrieval(rows)) == 1
