@@ -1056,13 +1056,18 @@ def new_trial_disposition(appeal_text: str) -> bool:
     return bool(re.search(r"направ\w*\s+[^.]{0,100}" + hearing + "|" + hearing, operative))
 
 
+def ocr_word(value: str) -> str:
+    return r"\s*".join(re.escape(character) for character in value)
+
+
 def extract_outcome(appeal_text: str) -> str:
     operative = operative_text(appeal_text)
     if operative is None:
         return "unknown"
     outcomes = set()
-    sentence = r"п\s*р\s*и\s*г\s*о\s*в\s*о\s*р"
-    pattern = rf"(?<![а-я]){sentence}(?![а-я])(.{{0,350}}?)(оставить\s+без\s+изменения|изменить|отменить)"
+    sentence = ocr_word("приговор")
+    unchanged = ocr_word("оставить") + r"\s+" + ocr_word("без") + r"\s+" + ocr_word("изменения")
+    pattern = rf"(?<![а-я]){sentence}(?![а-я])(.{{0,350}}?)({unchanged}|{ocr_word('изменить')}|{ocr_word('отменить')})"
     for match in re.finditer(pattern, operative, re.S):
         body = match.group(1)
         if re.search(r"постановлен|определен|арест|мер[аы]\s*пресечения|восстанов|срок\w*\s+обжалован|обжалования\s+срока", body):
@@ -1093,7 +1098,9 @@ def verify_pair(candidate: dict[str, Any], sentence_text: str, appeal_text: str)
         errors.append("sentence_type_not_confirmed")
     if "установил" not in sentence_compact:
         errors.append("sentence_full_text_not_confirmed")
-    if "апелляцион" not in appeal_compact or "наприговор" not in appeal_compact or not has_sentence_operative(appeal_text):
+    intro_compact = compact_text(appeal_text[:6000])
+    procedural_intro = re.search(r"напостановление", intro_compact)
+    if "апелляцион" not in appeal_compact or not has_sentence_operative(appeal_text) or ("наприговор" not in appeal_compact and procedural_intro):
         errors.append("appeal_type_not_confirmed")
     if new_trial_disposition(appeal_text):
         errors.append("new_trial")

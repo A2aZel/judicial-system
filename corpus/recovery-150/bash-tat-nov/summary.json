@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "eligible_missing_sentence": 287,
+  "eligible_with_complete_identity": 208,
+  "excluded_incomplete_identity": 79,
+  "eligible_by_source": {
+    "bashkortostan": 93,
+    "tatarstan": 92,
+    "novosibirsk": 23
+  },
+  "processed_by_source": {
+    "bashkortostan": {
+      "no_result": 84,
+      "rejected_new_trial": 7,
+      "confirmed_pair": 2
+    },
+    "tatarstan": {
+      "no_result": 81,
+      "rejected_new_trial": 11
+    },
+    "novosibirsk": {
+      "no_result": 20,
+      "rejected_sentence": 1,
+      "confirmed_pair": 1,
+      "rejected_download": 1
+    }
+  },
+  "searched_by_source": {
+    "bashkortostan": {
+      "no_result": 84,
+      "confirmed_pair": 2
+    },
+    "tatarstan": {
+      "no_result": 81
+    },
+    "novosibirsk": {
+      "no_result": 20,
+      "rejected_sentence": 1,
+      "confirmed_pair": 1,
+      "rejected_download": 1
+    }
+  },
+  "recorded_search_queries": 314,
+  "downloaded_documents": 4,
+  "rejected_records": 20,
+  "confirmed_pairs": 3,
+  "by_source": {
+    "bashkortostan": 2,
+    "tatarstan": 0,
+    "novosibirsk": 1
+  },
+  "by_outcome": {
+    "changed": 3,
+    "unchanged": 0,
+    "cancelled": 0
+  },
+  "progress_statuses": {
+    "no_result": 185,
+    "rejected_new_trial": 18,
+    "confirmed_pair": 3,
+    "rejected_sentence": 1,
+    "rejected_download": 1
+  },
+  "manifest_entries": 215,
+  "manifest_errors": 0,
+  "processed_dataset_included": false
+}

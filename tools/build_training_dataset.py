@@ -18,19 +18,25 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from tools.mosgorsud_open_data import extract_outcome, number_identity_variants, parse_date, verify_pair as verify_moscow_pair
+from tools.mosgorsud_open_data import extract_outcome, new_trial_disposition, number_identity_variants, parse_date, verify_pair as verify_moscow_pair
 MOSCOW_RAW = ROOT / "corpus" / "mosgorsud" / "raw"
 EXPANSION_RAW = ROOT / "corpus" / "expansion" / "raw"
 SUDACT_RAW = ROOT / "corpus" / "sudact"
 REGIONAL_RAW = ROOT / "corpus" / "regional" / "raw"
 REGIONAL_PAIR_STATUS = ROOT / "corpus" / "pairs" / "rostov-7kas" / "pair-status.jsonl"
+UNIFIED_CASE_INDEX = REGIONAL_RAW / "collection-2026-11-10" / "unified-case-index.jsonl"
+UNIFIED_METADATA = REGIONAL_RAW / "collection-2026-11-10" / "metadata.jsonl"
+RECOVERY_PAIR_STATUSES = (
+    ROOT / "corpus" / "recovery-150" / "rostov-7kas" / "recovered-pairs.jsonl",
+    ROOT / "corpus" / "recovery-150" / "bash-tat-nov" / "recovered-pairs.jsonl",
+)
 PROCESSED = ROOT / "corpus" / "processed"
 OUTCOMES = {"unchanged", "changed", "cancelled", "unknown"}
 APPEAL_ONLY_ERRORS = {
     "appeal_type_not_confirmed", "appeal_number_mismatch", "appeal_court_mismatch",
     "appeal_date_missing", "appeal_date_mismatch", "new_trial", "sentence_number_conflict", "manual_review",
 }
-BUILD_CONTRACT = 4
+BUILD_CONTRACT = 17
 
 
 def utc_now() -> str:
@@ -126,11 +132,17 @@ def article_parts(participants: Iterable[dict[str, Any]]) -> tuple[list[str], li
                     positive.update(part.split("|"))
                 elif number != "290":
                     other.add(number + (" ч." + part if part else ""))
+            for match in re.finditer(r"ч\s*\.?\s*([\d|]+)\s*ст\s*\.?\s*(\d+(?:\.\d+)?)", name, re.I):
+                part, number = match.group(1), match.group(2)
+                if number == "290":
+                    positive.update(part.split("|"))
+                else:
+                    other.add(number + " ч." + part)
     return sorted(positive), sorted(other)
 
 
 def article_parts_from_text(text: str) -> tuple[list[str], list[str]]:
-    names = re.findall(r"ст\s*\.?\s*\d+(?:\.\d+)?(?:\s*,?\s*ч\s*\.?\s*[\d|]+)?", text, re.I)
+    names = re.findall(r"(?:ч\s*\.?\s*[\d|]+\s*)?ст\s*\.?\s*\d+(?:\.\d+)?(?:\s*,?\s*ч\s*\.?\s*[\d|]+)?", text, re.I)
     return article_parts([{"codexArticles": [{"name": name} for name in names]}])
 
 
@@ -300,10 +312,10 @@ def moscow_records(raw: Path = MOSCOW_RAW) -> list[dict[str, Any]]:
             positive, other = article_parts(first["participants"])
         else:
             positive, other = article_parts_from_text(sentence_text)
-        identity_errors = list(state.get("errors", []))
-        retrieval_errors = [error for error in state.get("errors", []) if error not in APPEAL_ONLY_ERRORS]
-        sentence_integrity = document_integrity(raw, documents["sentence"]) if documents.get("sentence") else False
         integrity = all(document_integrity(raw, documents[kind]) for kind in ("sentence", "appeal")) if all(kind in documents for kind in ("sentence", "appeal")) else False
+        identity_errors = [] if integrity else list(state.get("errors", []))
+        retrieval_errors = [] if integrity else [error for error in state.get("errors", []) if error not in APPEAL_ONLY_ERRORS]
+        sentence_integrity = document_integrity(raw, documents["sentence"]) if documents.get("sentence") else False
         if not integrity:
             identity_errors.append("integrity_mismatch")
         if not sentence_integrity:
@@ -311,7 +323,7 @@ def moscow_records(raw: Path = MOSCOW_RAW) -> list[dict[str, Any]]:
         verification_errors = verify_moscow_pair(candidate, sentence_text, appeal_text) if integrity and sentence_text and appeal_text else []
         identity_errors.extend(verification_errors)
         retrieval_errors.extend(error for error in verification_errors if error not in APPEAL_ONLY_ERRORS)
-        full_pair = state.get("status") == "confirmed_pair" and integrity and not identity_errors
+        full_pair = integrity and not identity_errors
         outcome = extract_outcome(appeal_text) if full_pair else "unknown"
         identity = candidate["identity"]
         records.append({
@@ -391,16 +403,64 @@ def sudact_records(raw: Path = SUDACT_RAW) -> list[dict[str, Any]]:
     return records
 
 
+def recovery_identity(row: dict[str, Any], root: Path) -> dict[str, Any]:
+    for entry in read_jsonl(root / UNIFIED_CASE_INDEX):
+        identity = entry["identity"]
+        if entry.get("underlying_case_id") == row.get("underlying_case_id") or identity.get("record_id") == row.get("source_record_id"):
+            return identity
+    for metadata in read_jsonl(root / UNIFIED_METADATA):
+        identity = metadata["identity"]
+        if identity.get("record_id") == row.get("source_record_id"):
+            return identity
+    return {}
+
+
+def recovery_artifacts(row: dict[str, Any], root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    if row.get("sentence_artifact") and row.get("appeal_artifact"):
+        return row["sentence_artifact"], row["appeal_artifact"]
+    identity = recovery_identity(row, root)
+    first = {
+        "court": identity.get("first_court"), "case_number": identity.get("first_case_number"),
+        "decision_date": identity.get("first_decision_date"), "document_type": "trial_verdict",
+    }
+
+    def convert(kind: str, spec: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+        source = str(spec.get("source") or row["source"])
+        evidence_path = row.get("recovery_evidence") if kind == "sentence" else identity.get("identity_evidence_path")
+        evidence_sha = row.get("recovery_evidence_sha256") if kind == "sentence" else identity.get("identity_link_evidence_sha256")
+        document_url = spec.get("document_url") or spec.get("source_url")
+        return {
+            "record_id": spec.get("record_id") or row.get("source_record_id") or str(document_url or "").rstrip("/").rsplit("/", 1)[-1],
+            "source": "sudact" if source.startswith("sudact") else source,
+            "document_type": event.get("document_type") or event.get("type"),
+            "text_path": str(spec["path"]).replace("\\", "/"),
+            "text_sha256": spec["sha256"],
+            "raw_path": str(spec["raw_path"]).replace("\\", "/") if spec.get("raw_path") else None,
+            "raw_sha256": spec.get("raw_sha256"),
+            "identity_evidence_path": str(evidence_path).replace("\\", "/") if evidence_path else None,
+            "identity_evidence_sha256": evidence_sha,
+            "source_url": document_url,
+            "court": event.get("court"),
+            "case_number": event.get("case_number") or event.get("number"),
+            "decision_date": event.get("decision_date") or event.get("date"),
+        }
+
+    return (
+        convert("sentence", row["sentence"], first),
+        convert("appeal", row["appeal"], row.get("appeal_event") or {}),
+    )
+
+
 def checked_pair_artifact(root: Path, artifact: dict[str, Any]) -> str | None:
     try:
-        text_path = (root / artifact["text_path"]).resolve()
+        text_path = (root / str(artifact["text_path"]).replace("\\", "/")).resolve()
         text_path.relative_to(root.resolve())
         if sha256_file(text_path) != artifact.get("text_sha256"):
             return None
         for path_key, hash_key in (("raw_path", "raw_sha256"), ("identity_evidence_path", "identity_evidence_sha256")):
             if not artifact.get(path_key):
                 continue
-            path = (root / artifact[path_key]).resolve()
+            path = (root / str(artifact[path_key]).replace("\\", "/")).resolve()
             path.relative_to(root.resolve())
             if sha256_file(path) != artifact.get(hash_key):
                 return None
@@ -409,18 +469,20 @@ def checked_pair_artifact(root: Path, artifact: dict[str, Any]) -> str | None:
         return None
 
 
-def regional_pair_records(status_path: Path = REGIONAL_PAIR_STATUS, root: Path = ROOT) -> list[dict[str, Any]]:
+def regional_pair_records(status_path: Path = REGIONAL_PAIR_STATUS, root: Path = ROOT, additional_status_paths: Iterable[Path] = ()) -> list[dict[str, Any]]:
     analysis_path = SUDACT_RAW / "analysis.csv"
     analysis = read_csv(analysis_path) if analysis_path.exists() else {}
+    rows = read_jsonl(status_path)
+    for additional_path in additional_status_paths:
+        rows.extend(read_jsonl(additional_path))
     records = []
-    for row in read_jsonl(status_path):
+    for row in rows:
         if row.get("pair_status") != "confirmed_pair" or row.get("identity_errors") or row.get("outcome") not in OUTCOMES - {"unknown"}:
             continue
-        sentence = row.get("sentence_artifact") or {}
-        appeal = row.get("appeal_artifact") or {}
+        sentence, appeal = recovery_artifacts(row, root)
         sentence_text = checked_pair_artifact(root, sentence)
         appeal_text = checked_pair_artifact(root, appeal)
-        if not sentence_text or not appeal_text:
+        if not sentence_text or not appeal_text or new_trial_disposition(appeal_text):
             continue
         metadata = analysis.get(str(sentence.get("record_id", "")).removeprefix("sudact:"), {})
         date = sentence.get("decision_date")
@@ -436,7 +498,7 @@ def regional_pair_records(status_path: Path = REGIONAL_PAIR_STATUS, root: Path =
         source = str(row["source"]) + ("+sudact" if sentence.get("source") == "sudact" else "")
         records.append({
             "source": source,
-            "source_key": row["pair_id"],
+            "source_key": row.get("pair_id") or row["appeal_event_id"],
             "verdict_key": row["verdict_group_id"],
             "source_year": identity_year({"act_date": appeal.get("decision_date")}),
             "article_parts": positive,
@@ -525,7 +587,7 @@ def make_case(record: dict[str, Any], processed: Path) -> dict[str, Any]:
     quality = {
         "text_coverage": round(available / expected, 2) if expected else 0,
         "redaction_flags": text_flags(sentence_text or appeal_text),
-        "parser_status": "identity_failed" if identity_errors else record["status"],
+        "parser_status": "identity_failed" if identity_errors else ("confirmed_pair" if record["full_pair"] else record["status"]),
         "identity_errors": identity_errors,
         "retrieval_errors": list(record.get("retrieval_errors", identity_errors)),
         "provenance_warnings": list(record.get("provenance_warnings") or []),
@@ -663,15 +725,21 @@ def source_hashes() -> dict[str, str]:
         SUDACT_RAW / "analysis.csv",
         SUDACT_RAW / "appeals_analysis.csv",
         REGIONAL_PAIR_STATUS,
+        UNIFIED_CASE_INDEX,
+        UNIFIED_METADATA,
+        *RECOVERY_PAIR_STATUSES,
     ]
     result = {str(path.relative_to(ROOT)): sha256_file(path) for path in paths if path.exists()}
-    for row in read_jsonl(REGIONAL_PAIR_STATUS):
+    status_rows = read_jsonl(REGIONAL_PAIR_STATUS)
+    for recovery_path in RECOVERY_PAIR_STATUSES:
+        status_rows.extend(read_jsonl(recovery_path))
+    for row in status_rows:
         if row.get("pair_status") != "confirmed_pair":
             continue
-        for artifact in (row.get("sentence_artifact"), row.get("appeal_artifact")):
+        for artifact in recovery_artifacts(row, ROOT):
             for key in ("text_path", "raw_path", "identity_evidence_path"):
                 if artifact and artifact.get(key):
-                    path = (ROOT / artifact[key]).resolve()
+                    path = (ROOT / str(artifact[key]).replace("\\", "/")).resolve()
                     path.relative_to(ROOT.resolve())
                     result[str(path.relative_to(ROOT))] = sha256_file(path)
     for directory in (MOSCOW_RAW / "texts", EXPANSION_RAW / "texts", SUDACT_RAW / "docs", SUDACT_RAW / "appeals"):
@@ -736,7 +804,7 @@ def build(processed: Path = PROCESSED, split: bool = False, force: bool = False)
     attach_paths(expansion_records, EXPANSION_RAW)
     records.extend(expansion_records)
     records.extend(sudact_records())
-    records.extend(regional_pair_records())
+    records.extend(regional_pair_records(additional_status_paths=RECOVERY_PAIR_STATUSES))
     cases = [make_case(record, processed) for record in records]
     unify_verdict_text_groups(cases)
     retrieval = deduplicate_retrieval(cases)
@@ -797,7 +865,7 @@ def build(processed: Path = PROCESSED, split: bool = False, force: bool = False)
         "limitations": [
             "Нет оценки качества модели или production readiness.",
             "Региональные исторические тексты отсутствуют в текущем raw и не включены.",
-            "У двух региональных приговоров сохранены полный текст и метаданные СудАкта, но нет исходного HTML.",
+            "У части региональных приговоров сохранены полный текст и метаданные СудАкта, но нет исходного HTML.",
             "Незаполненные признаки сохраняются как null/empty, без догадок.",
             "Split по умолчанию unassigned; групповое разбиение опционально.",
         ],

@@ -4,12 +4,12 @@
 
 - Кандидатов в индексе: **288**
 - Событий в статусном файле: **385**
-- Confirmed pairs: **75**
+- Confirmed pairs: **79**
 - Восстановлено официальных пар вне сводного индекса: **6**
 - Missing sentence: **0**
 - Missing appeal: **157**
 - No compatible attachment: **53**
-- Identity failures (включая integrity): **91**
+- Identity failures (включая integrity): **87**
 - Duplicates: **0**
 
 ## По источнику и статусу
@@ -22,8 +22,8 @@
 | expansion | no_compatible_attachment | 9 |
 | moscow_open_data | missing_appeal | 118 |
 | moscow_open_data | no_compatible_attachment | 2 |
-| mosgorsud | confirmed_pair | 45 |
-| mosgorsud | identity_failed | 52 |
+| mosgorsud | confirmed_pair | 49 |
+| mosgorsud | identity_failed | 48 |
 | mosgorsud | missing_appeal | 17 |
 | mosgorsud | new_trial | 4 |
 | mosgorsud | no_compatible_attachment | 30 |
@@ -73,14 +73,14 @@
 | 2023 | missing_appeal | 31 |
 | 2023 | new_trial | 2 |
 | 2023 | no_compatible_attachment | 12 |
-| 2024 | confirmed_pair | 25 |
-| 2024 | identity_failed | 21 |
+| 2024 | confirmed_pair | 27 |
+| 2024 | identity_failed | 19 |
 | 2024 | missing_appeal | 6 |
 | 2024 | new_trial | 3 |
 | 2024 | no_compatible_attachment | 14 |
 | 2024 | procedural_act | 1 |
-| 2025 | confirmed_pair | 12 |
-| 2025 | identity_failed | 27 |
+| 2025 | confirmed_pair | 14 |
+| 2025 | identity_failed | 25 |
 | 2025 | missing_appeal | 4 |
 | 2025 | new_trial | 3 |
 | 2025 | no_compatible_attachment | 8 |
@@ -100,7 +100,7 @@
 | Outcome | Count |
 | --- | --- |
 | cancelled | 6 |
-| changed | 41 |
-| unchanged | 28 |
+| changed | 43 |
+| unchanged | 30 |
 
 Процессуальные акты, направления на новое рассмотрение и сокращённые приговоры без мотивировки не входят в confirmed pairs. Этот pipeline не меняет processed dataset; включение выполняется отдельной пересборкой dataset.

@@ -741,6 +741,14 @@ def test_ocr_spaced_sentence_change_takes_priority_over_unchanged_remainder():
     assert mod.extract_outcome(text) == "changed"
 
 
+def test_outcome_accepts_ocr_action_and_does_not_require_introductory_na():
+    sentence, appeal = valid_pair_texts()
+    without_na = appeal.replace("Рассмотрена жалоба на приговор", "Рассмотрена жалоба")
+    spaced_action = without_na.replace("оставить", "о ставить").replace("Рассмотрена жалоба", "Мера пресечения изменена. Рассмотрена жалоба")
+    assert mod.extract_outcome(spaced_action) == "unchanged"
+    assert mod.verify_pair(synthetic_candidate(), sentence, spaced_action) == []
+
+
 def test_return_of_presentation_without_consideration_is_not_sentence_outcome():
     text = (
         "ОПРЕДЕЛИЛ: определение о возвращении без рассмотрения апелляционного представления "

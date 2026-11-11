@@ -1,0 +1,31 @@
+{
+  "additional_leads_checked": 1,
+  "direct_document_requests": 6,
+  "eligible_missing_sentence": 287,
+  "exact_web_searches": 266,
+  "expanded_web_searches": 197,
+  "identity_complete_candidates": 253,
+  "manifest_entries": 608,
+  "outcomes_confirmed_pairs": {
+    "changed": 1,
+    "unchanged": 2
+  },
+  "processed_dataset_or_index_changed": false,
+  "processing_contract": 2,
+  "recovered_full_pairs": 3,
+  "rejected_documents": 2,
+  "rejected_new_trial": 1,
+  "robots_requests": 1,
+  "schema_version": 1,
+  "search_errors": 54,
+  "searched_by_source": {
+    "7kas": 93,
+    "rostov": 160
+  },
+  "searched_candidates": 253,
+  "sources_confirmed_pairs": {
+    "7kas": 1,
+    "rostov": 2
+  },
+  "web_search_requests": 463
+}

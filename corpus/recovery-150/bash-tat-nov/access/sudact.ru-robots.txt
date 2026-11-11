@@ -1,0 +1,97 @@
+User-Agent: *
+Disallow: /vsrf/doc/print/
+Disallow: /regular/doc/print/
+Disallow: /arbitral/doc/print/
+Disallow: /magistrate/doc/print/
+Disallow: /law/doc/print/
+Disallow: /doc/send/
+Disallow: /doc/save/
+Disallow: /law/send/
+Disallow: /bookmark/
+Disallow: /account/
+Disallow: /vsrf/doc_ajax/
+Disallow: /regular/doc_ajax/
+Disallow: /arbitral/doc_ajax/
+Disallow: /magistrate/doc_ajax/
+Disallow: /*bound%20method%20Doc.get_active_form
+Disallow: /defence/check_captcha/
+Sitemap: https://sudact.ru/sitemap.xml
+Sitemap: https://sudact.ru/sitemap_4375y04375430/law/sitemap.xml
+Disallow: /qa/answers/*/edit/
+Disallow: /qa/users/*
+Disallow: /qa/answers
+Disallow: /qa/questions/*/revisions/
+Disallow: /qa/questions/scope*
+Disallow: /away/b1/
+Disallow: /away/b2/
+Disallow: /forms/templates/download/
+
+User-agent: Mediapartners-Google
+Disallow:
+
+User-agent: Yandex
+Disallow: /static/js/
+Disallow: /static/css/
+Disallow: /static/i/
+Disallow: /vsrf/doc/print/
+Disallow: /regular/doc/print/
+Disallow: /arbitral/doc/print/
+Disallow: /magistrate/doc/print/
+Disallow: /law/doc/print/
+Disallow: /*/doc/send/
+Disallow: /law/send/
+Disallow: /*/doc/save/
+Disallow: /law/save/
+Disallow: /bookmark/
+Disallow: /account/
+Disallow: /vsrf/doc_ajax/
+Disallow: /regular/doc_ajax/
+Disallow: /arbitral/doc_ajax/
+Disallow: /magistrate/doc_ajax/
+Disallow: /qa/answers/*/edit/
+Disallow: /defence/check_captcha/
+Disallow: /qa/users/*
+Disallow: /qa/answers
+Disallow: /qa/questions/*/revisions/
+Disallow: /qa/questions/scope*
+Disallow: /away/b1/
+Disallow: /away/b2/
+Disallow: /forms/templates/download/
+
+
+Clean-param: form-reset&snippet_pos&_&ref
+
+Clean-param: arbitral-participant /arbitral/*/*/
+
+Clean-param: arbitral-txt&arbitral-case_doc&arbitral-judge&arbitral-participant&arbitral-doc_type&arbitral-date_from&arbitral-date_to&arbitral-region&arbitral-court&page&arbitral-lawchunkinfo&arbitral- /arbitral/doc/*/
+
+Clean-param: arbitral-txt&arbitral-case_doc&arbitral-judge&arbitral-participant&arbitral-doc_type&arbitral-date_from&arbitral-date_to&arbitral-region&arbitral-court&page /arbitral/judge/*/
+
+Clean-param: arbitral-txt&arbitral-case_doc&arbitral-judge&arbitral-participant&arbitral-doc_type&arbitral-date_from&arbitral-date_to&arbitral-region&arbitral-court&page /arbitral/participant/*/
+
+Clean-param: regular-participant /regular/*/*/
+
+Clean-param: regular-txt&regular-case_doc&regular-judge&regular-doc_type&regular-date_from&regular-date_to&regular-workflow_stage&regular-area&regular-court&page&regular-lawchunkinfo&regular&regular- /regular/doc/*/
+
+Clean-param: regular-txt&regular-case_doc&regular-judge&regular-doc_type&regular-date_from&regular-date_to&regular-workflow_stage&regular-area&regular-court&page /regular/judge/*/
+
+Clean-param: regular-txt&regular-case_doc&regular-judge&regular-doc_type&regular-date_from&regular-date_to&regular-workflow_stage&regular-area&regular-court&page /regular/participant/*/
+
+Clean-param: regular-court /regular/court/*/
+
+Clean-param: magistrate-txt&magistrate-case_doc&magistrate-judge&magistrate-doc_type&magistrate-date_from&magistrate-date_to&magistrate-area&magistrate-court&page&magistrate-lawchunkinfo&_ /magistrate/doc/*/
+
+Clean-param: magistrate-txt&magistrate-case_doc&magistrate-judge&magistrate-doc_type&magistrate-date_from&magistrate-date_to&magistrate-area&page&magistrate-court /magistrate/judge/*/
+
+Clean-param: magistrate-txt&magistrate-case_doc&magistrate-judge&magistrate-doc_type&magistrate-date_from&magistrate-date_to&magistrate-area&page&magistrate-court /magistrate/participant/*/
+
+Clean-param: vsrf-txt&vsrf-judge&vsrf-case_doc&vsrf- /vsrf/*/*/
+
+Clean-param: law-txt&law-name&law-law_type&law-law_number&law-authority&law-date_from&law-date_to&law-law_actuality&law-sorter&page&_ /law/doc/*/*/
+
+Clean-param: law-txt&law-name&law-law_type&law-law_number&law-authority&law-date_from&law-date_to&law-law_actuality&law-sorter&page&_ /law/doc/*/*/*/
+
+Clean-param: next /qa/
+
+User-agent: AhrefsBot
+Disallow: /

@@ -1,12 +1,12 @@
 {
-  "generation": "20261110T090337-99ffa6a87d154970961851febdb9abd1",
-  "index_path": "dense-index-generations/20261110T090337-99ffa6a87d154970961851febdb9abd1/dense-index.npz",
-  "manifest_path": "dense-index-generations/20261110T090337-99ffa6a87d154970961851febdb9abd1/model-card.json",
+  "generation": "20261111T004202-b979565aab9a40329ec4df66951a8b08",
+  "index_path": "dense-index-generations/20261111T004202-b979565aab9a40329ec4df66951a8b08/dense-index.npz",
+  "manifest_path": "dense-index-generations/20261111T004202-b979565aab9a40329ec4df66951a8b08/model-card.json",
   "model_id": "deepvk/USER-bge-m3",
   "model_revision": "0cc6cfe48e260fb0474c753087a69369e88709ae",
   "pointer": "dense_index_generation_v1",
-  "repository_records": 166,
+  "repository_records": 172,
   "schema_version": 1,
-  "source_records": 229,
-  "unique_texts": 166
+  "source_records": 235,
+  "unique_texts": 172
 }

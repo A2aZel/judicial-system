@@ -1,0 +1,26 @@
+{
+  "sudact.ru": {
+    "last_get_at_utc": "2026-11-11T00:18:53+00:00",
+    "status": "allowed",
+    "robots_allowed": true,
+    "robots_path": "corpus/recovery-150/bash-tat-nov/access/sudact.ru-robots.txt",
+    "robots_sha256": "961a309c5a96d76b9100456719eff1dc2cc88cf3357704aec90c37ab7dd2fcb2",
+    "regular_doc_ajax_allowed": false
+  },
+  "advocate-service.ru": {
+    "last_get_at_utc": "2026-11-10T21:22:39+00:00",
+    "status": "allowed",
+    "robots_allowed": true,
+    "robots_path": "corpus/recovery-150/bash-tat-nov/access/advocate-service.ru-robots.txt",
+    "robots_sha256": "614dee40ea29e737b005e3b47bac9cbcac29107363a5071960cbc8ea17ac6bbd",
+    "regular_doc_ajax_allowed": false
+  },
+  "pravoilevo.ru": {
+    "last_get_at_utc": "2026-11-11T00:23:53+00:00",
+    "status": "allowed",
+    "robots_allowed": true,
+    "robots_path": "corpus/recovery-150/bash-tat-nov/access/pravoilevo.ru-robots.txt",
+    "robots_sha256": "619e4f5b9d94222b6f80147383c23e7ced515f25d275e8c4bf5e8b69b2d60130",
+    "regular_doc_ajax_allowed": false
+  }
+}

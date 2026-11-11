@@ -7,7 +7,7 @@ from tools import build_training_dataset as mod
 
 @pytest.fixture(autouse=True)
 def isolate_regional_pairs(monkeypatch):
-    monkeypatch.setattr(mod, "regional_pair_records", lambda: [])
+    monkeypatch.setattr(mod, "regional_pair_records", lambda *args, **kwargs: [])
 
 
 def source_record(tmp_path, appeal_id="appeal-1", full_pair=True, outcome="changed"):
@@ -79,6 +79,12 @@ def test_article_labels_are_not_invented(tmp_path):
     case["article_parts"] = []
     case["other_articles"] = []
     assert mod.article_case(case) is None
+
+
+def test_article_part_before_number_is_extracted():
+    positive, other = mod.article_parts_from_text("Обвиняемый по ч. 3 ст. 290 УК РФ и ч. 1 ст. 286 УК РФ")
+    assert positive == ["3"]
+    assert "286 ч.1" in other
 
 
 def test_structured_process_metadata_wins():
@@ -198,6 +204,17 @@ def test_confirmed_pair_requires_current_sha_and_identity(tmp_path):
     assert "integrity_mismatch" in records[0]["identity_errors"]
     assert mod.retrieval_case(mod.make_case(records[0], tmp_path)) is None
     assert mod.article_case(mod.make_case(records[0], tmp_path)) is None
+
+
+def test_current_validation_overrides_stale_failed_checkpoint_status(tmp_path):
+    sentence, appeal = moscow_valid_texts()
+    mod.write_jsonl(tmp_path / "work/appeal-candidates.jsonl", [moscow_candidate()])
+    documents = {"sentence": moscow_document(tmp_path, "sentence", sentence), "appeal": moscow_document(tmp_path, "appeal", appeal)}
+    mod.atomic_json(tmp_path / "pair-progress.json", {"synthetic-moscow": {"status": "verification_failed", "documents": documents, "errors": []}})
+    record = mod.moscow_records(tmp_path)[0]
+    assert record["full_pair"] is True
+    assert record["outcome"] == "unchanged"
+    assert mod.make_case(record, tmp_path)["quality"]["parser_status"] == "confirmed_pair"
 
 
 def test_retrieval_excludes_failed_identity(tmp_path):
@@ -412,6 +429,12 @@ def test_regional_pair_adapter_rechecks_artifacts_and_text_only_provenance(tmp_p
     assert len(records) == 1
     assert records[0]["source"] == "7kas+sudact"
     assert records[0]["provenance_warnings"] == ["sentence_raw_unavailable"]
+    assert len(mod.regional_pair_records(tmp_path / "missing.jsonl", tmp_path, additional_status_paths=[status])) == 1
+    remanded = appeal.replace("Приговор оставить без изменения,", "Приговор отменить, дело направить на новое судебное разбирательство,")
+    (tmp_path / "corpus/appeal.txt").write_text(remanded, encoding="utf-8")
+    row["appeal_artifact"]["text_sha256"] = mod.sha256_file(tmp_path / "corpus/appeal.txt")
+    mod.write_jsonl(status, [row])
+    assert mod.regional_pair_records(status, tmp_path) == []
     (tmp_path / "corpus/sentence.txt").write_text("damaged", encoding="utf-8")
     assert mod.regional_pair_records(status, tmp_path) == []
 
@@ -422,7 +445,8 @@ def test_saved_appeal_error_does_not_exclude_valid_sentence(tmp_path):
     documents = {"sentence": moscow_document(tmp_path, "sentence", sentence), "appeal": moscow_document(tmp_path, "appeal", appeal)}
     mod.atomic_json(tmp_path / "pair-progress.json", {"synthetic-moscow": {"status": "confirmed_pair", "documents": documents, "errors": ["appeal_type_not_confirmed"]}})
     record = mod.moscow_records(tmp_path)[0]
-    assert record["full_pair"] is False
+    assert record["full_pair"] is True
+    assert record["outcome"] == "unchanged"
     assert record["retrieval_errors"] == []
     assert mod.retrieval_case(mod.make_case(record, tmp_path)) is not None
 
@@ -441,3 +465,41 @@ def test_ocr_variants_with_same_complete_identity_share_group(tmp_path):
     mod.assign_splits(rows)
     assert rows[0]["split"] == rows[1]["split"]
     assert len(mod.deduplicate_retrieval(rows)) == 1
+
+
+def test_legacy_recovery_schema_and_windows_paths_are_normalized(tmp_path, monkeypatch):
+    monkeypatch.undo()
+    monkeypatch.setattr(mod, "UNIFIED_CASE_INDEX", tmp_path / "unified-case-index.jsonl")
+    monkeypatch.setattr(mod, "UNIFIED_METADATA", tmp_path / "metadata.jsonl")
+    assert mod.UNIFIED_CASE_INDEX.is_relative_to(tmp_path) and mod.UNIFIED_METADATA.is_relative_to(tmp_path)
+    sentence, appeal = moscow_valid_texts()
+    evidence = tmp_path / "corpus/evidence.json"
+    evidence.parent.mkdir(parents=True)
+    evidence.write_text("{}", encoding="utf-8")
+    artifacts = []
+    for kind, text in (("sentence", sentence), ("appeal", appeal)):
+        path = tmp_path / "corpus" / f"{kind}.txt"
+        path.write_text(text, encoding="utf-8")
+        artifacts.append({"path": f"corpus\\{kind}.txt", "sha256": mod.sha256_file(path), "raw_path": None, "source": "sudact.ru" if kind == "sentence" else "bashkortostan", "record_id": None, "document_url": f"https://sudact.ru/regular/doc/{kind}/"})
+    identity = {
+        "record_id": "appeal-record", "first_court": "Тестовый районный суд",
+        "first_case_number": "1-1/2024", "first_decision_date": "2024-02-01",
+        "identity_evidence_path": "corpus/evidence.json", "identity_link_evidence_sha256": mod.sha256_file(evidence),
+    }
+    mod.write_jsonl(tmp_path / mod.UNIFIED_CASE_INDEX, [{"underlying_case_id": "case", "identity": identity}])
+    row = {
+        "source": "bashkortostan", "source_record_id": "appeal-record", "underlying_case_id": "case",
+        "verdict_group_id": "group", "appeal_event_id": "event", "appeal_event": {"court": "Апелляционный суд", "number": "22-1/2024", "date": "01.03.2024", "type": "appeal_against_verdict"},
+        "sentence": artifacts[0], "appeal": artifacts[1], "pair_status": "confirmed_pair", "outcome": "changed",
+        "identity_errors": [], "recovery_evidence": "corpus/evidence.json", "recovery_evidence_sha256": mod.sha256_file(evidence),
+    }
+    status = tmp_path / "status.jsonl"
+    mod.write_jsonl(status, [row])
+    records = mod.regional_pair_records(status, tmp_path)
+    assert len(records) == 1
+    assert records[0]["source"] == "bashkortostan+sudact"
+    assert records[0]["source_key"] == "event"
+    assert records[0]["first"]["number"] == "1-1/2024"
+    (tmp_path / mod.UNIFIED_CASE_INDEX).unlink()
+    mod.write_jsonl(tmp_path / mod.UNIFIED_METADATA, [{"identity": identity}])
+    assert len(mod.regional_pair_records(status, tmp_path)) == 1

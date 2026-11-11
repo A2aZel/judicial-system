@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /assets/docs/
+Disallow: /assets/modules/
+Disallow: /assets/plugins/
+Disallow: /assets/snippets/
+Disallow: /manager/
+Disallow: /assets/files/*
+Sitemap: https://advocate-service.ru/sitemap.xml

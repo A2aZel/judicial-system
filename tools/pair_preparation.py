@@ -557,7 +557,7 @@ def resume_valid(root: Path, row: dict[str, Any]) -> bool:
 
 
 def candidate_fingerprint(entry: dict[str, Any], candidate: dict[str, Any] | None) -> str:
-    value = {"entry": entry, "candidate": candidate, "contract": 4}
+    value = {"entry": entry, "candidate": candidate, "contract": 6}
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 
 

@@ -1,15 +1,18 @@
 {
   "schema_version": 1,
-  "build_contract": 4,
-  "created_at": "2026-11-10T09:10:43.018244+00:00",
+  "build_contract": 17,
+  "created_at": "2026-11-11T00:41:35.563677+00:00",
   "counts": {
-    "cases": 2389,
-    "retrieval_cases": 229,
-    "risk_examples": 77,
-    "article_examples": 223,
+    "cases": 2394,
+    "retrieval_cases": 235,
+    "risk_examples": 86,
+    "article_examples": 228,
     "by_source": {
       "7kas+sudact": 2,
+      "bashkortostan+sudact": 2,
       "mosgorsud": 2221,
+      "novosibirsk+sudact": 1,
+      "rostov+sudact": 2,
       "sudact": 129,
       "sudact_appeal": 37
     },
@@ -17,35 +20,35 @@
       "2017": 23,
       "2018": 31,
       "2019": 80,
-      "2020": 48,
-      "2021": 35,
+      "2020": 49,
+      "2021": 36,
       "2022": 396,
-      "2023": 388,
-      "2024": 554,
-      "2025": 783,
+      "2023": 389,
+      "2024": 555,
+      "2025": 784,
       "2026": 51
     },
     "risk_outcomes": {
-      "cancelled": 7,
-      "changed": 41,
-      "unchanged": 29,
+      "cancelled": 6,
+      "changed": 47,
+      "unchanged": 33,
       "unknown": 0
     },
     "article_parts": {
-      "1": 5,
-      "2": 24,
-      "3": 58,
-      "5": 71,
+      "1": 6,
+      "2": 23,
+      "3": 63,
+      "5": 72,
       "6": 35
     },
     "quality": {
-      "confirmed_pair": 77,
-      "identity_failed": 2146,
+      "confirmed_pair": 86,
+      "identity_failed": 2142,
       "ok": 129,
       "unlinked_appeal": 37
     },
-    "full_pairs": 77,
-    "regional_text_only_pairs": 2,
+    "full_pairs": 86,
+    "regional_text_only_pairs": 1,
     "regional_historical_unavailable": 4
   },
   "inputs": {
@@ -59,7 +62,17 @@
     "corpus\\sudact\\appeals.jsonl": "06e1ff80339ae2e0a6768c9a5a70d575f4b6e82fbb9858bc9963a3c35feea6b8",
     "corpus\\sudact\\analysis.csv": "7ae82a5b2b43c93e8c4d9e0b59e036c6b2386238150e56c583149dff46c5e925",
     "corpus\\sudact\\appeals_analysis.csv": "e8e5e87619ce8fd91c136e8966f190fc5937ace56d14967f8c258023f5676226",
-    "corpus\\pairs\\rostov-7kas\\pair-status.jsonl": "ee3b05fc22175806ee02e1fb62840ea46aad2aa88bdde88f0146cfc6d577d1a3"
+    "corpus\\pairs\\rostov-7kas\\pair-status.jsonl": "ee3b05fc22175806ee02e1fb62840ea46aad2aa88bdde88f0146cfc6d577d1a3",
+    "corpus\\regional\\raw\\collection-2026-11-10\\unified-case-index.jsonl": "46fab52d181188cdc00704886db576e04927b263be75b53911eff2e30f0b9360",
+    "corpus\\regional\\raw\\collection-2026-11-10\\metadata.jsonl": "46fab52d181188cdc00704886db576e04927b263be75b53911eff2e30f0b9360",
+    "corpus\\recovery-150\\rostov-7kas\\recovered-pairs.jsonl": "5c8f301cb59531a351ef39a4212eec141626b7c4e7a23007b7245cca6c12c8ff",
+    "corpus\\recovery-150\\bash-tat-nov\\recovered-pairs.jsonl": "35289f944f333a78c7156cf25ab1f9fe54d246574eb922efef48d38cd053d202",
+    "corpus\\recovery-150\\rostov-7kas\\evidence\\documents\\0fcf762ee896697a3c2df4f1-GxpJx38QaJlZ.json": "945af27cf906cd308ae6816c39180e6e15737bef93612a2f417ad85c41d465de",
+    "corpus\\recovery-150\\rostov-7kas\\evidence\\documents\\d0306d89702834e78e5bdf39-nIpiUEKSNWWm.json": "6410ddaa94399acb2e277f1a561459c0449123f0e0613f3b440efdae50b07a1a",
+    "corpus\\recovery-150\\rostov-7kas\\evidence\\documents\\a2c4d34828206d4b4372c051-YFJG4H4COSgp.json": "efee99dbde148c86f865412bacf8f5c024ab73fbe6ca3e1245e6886a6ed63f59",
+    "corpus\\recovery-150\\bash-tat-nov\\evidence\\documents\\ae_70d224eda28f12b738a5cd30-5fc61b8fc7cf4beb61ef.json": "f82d40ba3815308786e1a92c491859d8c5093e16bfccf0dde996d44a426f39a4",
+    "corpus\\recovery-150\\bash-tat-nov\\evidence\\documents\\ae_6344310588d61176e0da4bc4-40054884cee076816f60.json": "69fc4a3b4fee6e75fb0521c74cc63d3ee75d546501ab9ca0b92c24c9c6c564fe",
+    "corpus\\recovery-150\\bash-tat-nov\\evidence\\documents\\ae_74fa24ea2cf3eb15ff21c18f-56ed01ab835f36cf95ad.json": "79464b51377633e0055e62ba238a20c15e3668ad6f904e5046f75b29480233ba"
   },
   "leakage_rules": {
     "retrieval_excludes_appeal_text_and_labels": true,
