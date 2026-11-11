@@ -1,5 +1,12 @@
 from tools import recover_unified_case_index as mod
 
+import pytest
+
+pytestmark = pytest.mark.skipif(
+    not (mod.COLLECTION / "raw").is_dir() or not mod.TARGET.is_file() or not mod.METADATA.is_file() or not mod.PAIR_STATUS.is_file(),
+    reason="Local judicial corpus and rebuilt index are not present",
+)
+
 
 def test_raw_backed_new_records_have_verified_counts():
     records = mod.new_records()

@@ -102,7 +102,9 @@ def test_selection_excludes_other_statuses_outcomes_and_incomplete_identity(tmp_
     assert [row["appeal_event_id"] for row in selected] == ["ae_0"]
 
 
-def test_public_report_contains_only_aggregates(tmp_path):
+def test_public_report_contains_only_aggregates(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "STATUS", tmp_path / "status.jsonl")
+    mod.write_jsonl(tmp_path / "status.jsonl", [{"pair_status": "missing_sentence", "outcome": "changed"}])
     mod.write_jsonl(tmp_path / "candidates.jsonl", [candidate()])
     mod.save_progress(tmp_path, {"ae_test": {"status": "no_result"}})
     summary = mod.write_report(tmp_path)
