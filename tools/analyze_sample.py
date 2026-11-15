@@ -1,12 +1,6 @@
-"""Грубый разбор выборки приговоров СудАкт для оценки корпуса.
+"""Грубая проверка выборки приговоров СудАкт по ст. 290.
 
-Это не извлечение для обучения, а проверка данных: сколько среди
-документов настоящих приговоров по ст. 290, есть ли УИД, какие режимы и
-наказания встречаются, насколько длинные и как обезличены тексты.
-Правила намеренно простые; их точность нужно проверить вручную на части выборки.
-
-Запуск из корня проекта:
-    python tools/analyze_sample.py
+Запуск: python tools/analyze_sample.py
 """
 
 import csv
@@ -23,7 +17,7 @@ OUT_CSV = Path("corpus/sudact/analysis.csv")
 OUT_SUMMARY = Path("corpus/sudact/summary.json")
 
 UID_RE = re.compile(r"(?<!\d)(\d{2}RS\d{4}-\d{2}-\d{4}-\d{6}-\d{2})(?!\d)")
-# С двоеточием: «приговорил» без него встречается в описании прежних судимостей.
+# Двоеточие отсекает «приговорил» в описании прежних судимостей.
 VERDICT_MARK_RE = re.compile(r"П\s*Р\s*И\s*Г\s*О\s*В\s*О\s*Р\s*И\s*Л\s*:", re.I)
 ART_290_RE = re.compile(r"ст(?:\.|атьи|атьей|атье|атья)?\s*290(?![.\d])")
 PART_290_RE = re.compile(
@@ -36,8 +30,7 @@ REDACTION_RE = re.compile(r"<данные изъяты>|\(данные изъя�
 TERM_RE = re.compile(r"лишени[яе] свободы\s+(?:на\s+)?(?:срок\s+)?([^;]{0,80})", re.I)
 YEARS_RE = re.compile(r"(\d+)\s*(?:\([^)]*\)\s*)?(?:год|лет)")
 MONTHS_RE = re.compile(r"(\d+)\s*(?:\([^)]*\)\s*)?месяц")
-# Формулировка осуждения: «признать … виновным в совершении …, предусмотренного ч. 3 ст. 290 УК РФ».
-# Статьи берём только отсюда: ниже в резолютивной части 290 встречается и в чужих делах.
+# Статьи — только из «признать виновным… предусмотренного…»: ниже 290 бывает в чужих делах.
 CONVICTION_CLAUSE_RE = re.compile(r"виновн\w*.{0,200}?предусмотренн\w*(.{0,400}?)(?:УК\s*Р|\bи\s+назнач)", re.I | re.S)
 TERM_REMOVED_RE = re.compile(r"(?:на срок|сроком на)\s+(?:год|лет|месяц)", re.I)
 AMOUNT_REMOVED_RE = re.compile(r"(?:в размере|в сумме|сумму)\s+рубл", re.I)
@@ -61,7 +54,7 @@ def analyse(meta: dict, text: str) -> dict:
     doc_type = title.split(" ", 1)[0]
     mark = VERDICT_MARK_RE.search(text)
     resolutive = text[mark.end():mark.end() + 6000] if mark else ""
-    # итоговое наказание при совокупности обычно идёт после слова «окончательно»
+    # Итог по совокупности идёт после «окончательно».
     final_idx = resolutive.lower().rfind("окончательн")
     final_part = resolutive[final_idx:] if final_idx >= 0 else resolutive
     term = TERM_RE.search(final_part)
@@ -94,7 +87,6 @@ def analyse(meta: dict, text: str) -> dict:
         "ban_on_positions": has(r"прав\w* занимать", resolutive),
         "confiscation": has(r"конфиск", resolutive),
         "redactions": len(REDACTION_RE.findall(text)),
-        # обезличивание иногда вырезает суммы и даты: «в размере рублей», «ДД.ММ.ГГГГ»
         "amounts_removed": len(AMOUNT_REMOVED_RE.findall(text)),
         "term_removed": bool(TERM_REMOVED_RE.search(final_part)),
         "dates_removed": text.count("ДД.ММ.ГГГГ"),

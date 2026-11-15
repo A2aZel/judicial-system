@@ -1,16 +1,10 @@
-// Выборка списка документов СудАкт по ст. 290 УК РФ.
-// Запускается в консоли браузера на странице https://sudact.ru/regular/ —
-// поиск сайта работает только через его JS, поэтому скрипт ходит в тот же
-// эндпоинт, что и форма поиска, с паузами между запросами.
-// Результат: массив {id, title, court, period, page, total} — сохранить как
-// corpus/sudact/listing.json.
-//
-// Пример: await sampleListing([[2020, 'H1'], [2020, 'H2']], 2)
+// Список документов СудАкт по ст. 290. Запуск в консоли браузера на sudact.ru/regular/.
+// Пример: await sampleListing([[2020, 'H1'], [2020, 'H2']], 2) → corpus/sudact/listing.json
 
 const LAW = 'Статья 290. Получение взятки(УК РФ)';
 const PAUSE_MS = 3000;
 const PAGE_SIZE = 10;
-const MAX_PAGES = 50; // сайт отдаёт не больше 50 страниц на запрос
+const MAX_PAGES = 50; // лимит сайта
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -47,7 +41,7 @@ async function listPage(from, to, page, stage = '10') {
   return { total: null, items: [] };
 }
 
-// periods: [[year, 'H1' | 'H2' | 'Y'], ...]; pagesPerPeriod случайных страниц на период.
+// periods: [[год, 'H1' | 'H2' | 'Y']]; pagesPerPeriod — случайных страниц на период.
 async function sampleListing(periods, pagesPerPeriod) {
   const out = [];
   for (const [year, part] of periods) {
