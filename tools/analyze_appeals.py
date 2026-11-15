@@ -1,12 +1,6 @@
-"""Грубый разбор выборки апелляционных актов СудАкт по ст. 290.
+"""Грубая проверка апелляционных актов СудАкт по ст. 290.
 
-Проверяем, годятся ли апелляционные акты как источник меток «изменён ли приговор и почему»:
-сколько из них — жалобы на приговор, а не на меру пресечения; какие исходы и мотивы
-встречаются; можно ли по тексту найти приговор первой инстанции (УИД, суд и дата).
-Правила простые; точность нужно проверить вручную.
-
-Запуск из корня проекта:
-    python tools/analyze_appeals.py
+Запуск: python tools/analyze_appeals.py
 """
 
 import csv
@@ -22,15 +16,14 @@ OUT_CSV = Path("corpus/sudact/appeals_analysis.csv")
 OUT_SUMMARY = Path("corpus/sudact/appeals_summary.json")
 
 UID_RE = re.compile(r"(?<!\d)(\d{2}RS\d{4}-\d{2}-\d{4}-\d{6}-\d{2})(?!\d)")
-# С двоеточием и последнее вхождение: «постановил» встречается и в описательной части.
-# Коллегия пишет «ОПРЕДЕЛИЛА:», единоличный судья — «ПОСТАНОВИЛ:».
+# «ПОСТАНОВИЛ:» или «ОПРЕДЕЛИЛА:»; берём последнее вхождение.
 DECISION_MARK_RE = re.compile(r"(?:П\s*О\s*С\s*Т\s*А\s*Н\s*О\s*В\s*И\s*Л|О\s*П\s*Р\s*Е\s*Д\s*Е\s*Л\s*И\s*Л(?:\s*А)?)\s*:", re.I)
 FIRST_INSTANCE_RE = re.compile(
     r"приговор\w*\s+.{0,160}?(?:суда|судьи).{0,160}?от\s+(?:\d{1,2}\s*[а-я]+\s+\d{4}|\d{2}\.\d{2}\.\d{4})", re.I | re.S
 )
 ART_290_RE = re.compile(r"ст(?:\.|атьи|атьей|атье)?\s*290(?![.\d])")
 
-# Мотивы, которые относятся к наказанию (п. 3–4 ст. 389.15 УПК РФ)
+# Мотивы по наказанию (п. 3–4 ст. 389.15 УПК).
 REASONS = {
     "too_harsh": r"чрезмерн\w* суров|несправедлив\w* вследствие суровости",
     "too_lenient": r"чрезмерн\w* мягк|вследствие (?:чрезмерной )?мягкости",
@@ -47,7 +40,6 @@ def analyse(meta: dict, text: str) -> dict:
     marks = list(DECISION_MARK_RE.finditer(text))
     resolutive = text[marks[-1].end():marks[-1].end() + 3000].lower() if marks else ""
     head = text[:6000].lower()
-    # резолютивная часть жалобы на приговор начинается со слова «приговор …»
     about_verdict = "приговор" in resolutive[:150]
     outcome = ""
     if about_verdict:
@@ -68,7 +60,7 @@ def analyse(meta: dict, text: str) -> dict:
         "prosecutor_appeal": "апелляционн" in head and "представлени" in head,
         "defence_appeal": bool(re.search(r"апелляционн\w* жалоб", head)),
         "uid": bool(UID_RE.search(text)),
-        # «приговор <суд> от <дата> в отношении …» — ключ для связки без УИД
+        # Суд и дата приговора — ключ связки без УИД.
         "first_instance_ref": bool(FIRST_INSTANCE_RE.search(resolutive[:400])),
         "chars": len(text),
     }

@@ -1,11 +1,6 @@
-"""Скачивает тексты документов СудАкт по списку из sudact_listing.js.
+"""Скачивает тексты СудАкт по списку: по одному, с паузой, стоп на капче.
 
-Страницы документов (/regular/doc/<id>/) открыты для роботов в robots.txt.
-Скрипт идёт последовательно с паузой, пропускает уже скачанное и
-останавливается, если сайт начинает отдавать капчу или ошибки.
-
-Запуск из корня проекта:
-    python tools/fetch_sudact_docs.py corpus/sudact/listing.json --only-verdicts
+Запуск: python tools/fetch_sudact_docs.py corpus/sudact/listing.json --only-verdicts
 """
 
 import argparse
@@ -27,7 +22,7 @@ META_PATH = Path("corpus/sudact/docs.jsonl")
 
 
 class Blocked(Exception):
-    """Сайт перестал отдавать документы: капча или серия ошибок."""
+    """Капча или серия ошибок."""
 
 
 def fetch(doc_id: str) -> str:
