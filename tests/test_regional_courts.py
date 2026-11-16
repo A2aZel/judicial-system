@@ -56,7 +56,7 @@ def test_candidate_uses_act_type_not_only_number():
 
 def test_event_identity_does_not_deduplicate_only_uid():
     url = mod.KRK.base + "/modules.php?name=sud_delo&name_op=case&case_id=101"
-    text = "24RS0059-01-2025-001021-49 Дата рассмотрения 05.02.2026 АПЕЛЛЯЦИОННОЕ ОПРЕДЕЛЕНИЕ"
+    text = "24RS0001-01-2025-000101-01 Дата рассмотрения 05.02.2026 АПЕЛЛЯЦИОННОЕ ОПРЕДЕЛЕНИЕ"
     first = mod.event_identity("krk", url, text)
     second = mod.event_identity("krk", url.replace("101", "102"), text)
     assert first["uid"] == second["uid"]
