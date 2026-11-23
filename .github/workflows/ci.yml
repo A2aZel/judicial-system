@@ -35,5 +35,24 @@ jobs:
           tags: judicial-ai:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Smoke test application inside image
-        run: docker run --rm judicial-ai:ci python -c "from fastapi.testclient import TestClient; from app import app; client=TestClient(app); response=client.get('/api/v1/health'); assert response.status_code == 200; print(response.json())"
+      - name: Smoke test running image
+        run: |
+          docker run --detach --name judicial-ci --publish 127.0.0.1:8000:8000 \
+            --env JUDICIAL_AI_CORPUS_PATH=/app/fixtures/synthetic_analysis.csv \
+            --env JUDICIAL_AI_BERT_RISK_ENABLED=false judicial-ai:ci
+          ready=false
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent --output /dev/null http://127.0.0.1:8000/api/v1/health; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = true
+          python3 tools/docker_smoke.py --base-url http://127.0.0.1:8000
+      - name: Show container logs on failure
+        if: failure()
+        run: docker logs judicial-ci || true
+      - name: Remove smoke container
+        if: always()
+        run: docker rm --force judicial-ci || true

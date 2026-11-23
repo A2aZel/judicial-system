@@ -64,15 +64,55 @@ JUDICIAL_AI_API_KEY=replace-with-a-secret-from-your-secret-manager
 ```bash
 docker build -t judicial-ai:0.1.0 .
 docker run --rm -p 127.0.0.1:8000:8000 \
+  -e JUDICIAL_AI_CORPUS_PATH=/data/analysis.csv \
   -v "$PWD/corpus/sudact/analysis.csv:/data/analysis.csv:ro" \
   -v judicial_model_cache:/models judicial-ai:0.1.0
 ```
 
+### Mac: Apple Silicon и Intel, включая 8 ГБ RAM
+
+Нужен Docker Desktop для вашей архитектуры Mac. Пока изменения не влиты в `main`, используйте feature-ветку:
+
+```bash
+git clone --branch feat/docker-mac-knn --single-branch https://github.com/A2aZel/judicial-system.git
+cd judicial-system
+cp .env.mac.example .env.mac
+mkdir -p data
+docker compose --env-file .env.mac -f compose.mac.yaml up --build -d
+```
+
+Откройте <http://localhost:8000/>. Это существующий UI и kNN backend. Первый запуск использует **синтетический CSV**, а не реальный судебный корпус. Для него не скачиваются модели. Qwen и генеративные ответы отсутствуют; appeal risk выключен.
+
+После успешной публикации workflow `Docker Mac CPU` можно взять готовый образ без локальной сборки:
+
+```bash
+docker compose --env-file .env.mac -f compose.mac.yaml pull
+docker compose --env-file .env.mac -f compose.mac.yaml up --no-build -d
+```
+
+Образ `ghcr.io/a2azel/judicial-system:mac8gb` содержит `linux/arm64` для Apple Silicon и `linux/amd64` для Intel; Docker выбирает платформу автоматически. Вычисления выполняются на CPU Linux: MPS/Metal внутри этого контейнера не используется. Тег `sha-<полный commit SHA>` позволяет закрепить конкретную сборку. `latest` этим workflow не публикуется.
+
+Проверка, логи и остановка:
+
+```bash
+docker compose --env-file .env.mac -f compose.mac.yaml exec api python tools/docker_smoke.py --base-url http://127.0.0.1:8000
+docker compose --env-file .env.mac -f compose.mac.yaml logs -f api
+docker compose --env-file .env.mac -f compose.mac.yaml down
+```
+
+Для переноса реальных данных скопируйте **всю** локальную папку `corpus/processed/` в `data/processed/`, включая `retrieval_cases.jsonl`, `model-card.json` и `dense-index-generations/` со всеми файлами активного поколения. Отдельного `model-card.json` или одного NPZ недостаточно. CSV необязателен; для собственного CSV положите его в `data/analysis.csv` и задайте в `.env.mac` `JUDICIAL_AI_CORPUS_PATH=/data/analysis.csv`. Перезапустите сервис командой `up -d --force-recreate` с теми же `--env-file` и `-f`.
+
+Папка `data/` монтируется read-only в `/data`; она и реальные дела не входят в образ. При наличии корректного processed JSONL сохраняются structured kNN и dense retrieval с существующими фильтрами. Dense query с непустой фабулой использует pinned `deepvk/USER-bge-m3`; первая такая операция может скачать веса в отдельный именованный volume `model_cache`. Для переноса уже скачанного совместимого Hugging Face cache укажите в `JUDICIAL_AI_MODEL_CACHE` в `.env.mac` полный путь к его writable папке `hub`, например `/Users/you/.cache/huggingface/hub`. Не публикуйте реальные processed-данные и кэш весов.
+
+На Mac с 8 ГБ RAM начальный бюджет Docker VM — примерно 4–5 ГБ, сервис ограничен 4 ГБ и 2 CPU, dense batch size — 1. Это настройки бюджета, а не измеренный peak RAM или гарантия времени ответа на Mac. Первый dense-запрос включает загрузку модели и может быть долгим; при нехватке памяти можно задать `JUDICIAL_AI_DENSE_ENABLED=false` и сохранить structured kNN либо использовать машину с большим объёмом RAM.
+
 ### Воспроизводимость образа
 
-Обе стадии используют `python:3.12.10-slim` с реальным linux/amd64 manifest digest `sha256:97983fa8cc88343512862c62307159a82261c3528dc025f79e5a3f7af43e50b4`, полученным через `docker buildx imagetools inspect python:3.12.10-slim`. Образ намеренно фиксирует linux/amd64.
+Обе стадии используют `python:3.12.10-slim` с закреплённым multi-platform index digest `sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db`. Docker выбирает соответствующий Linux manifest для amd64 или arm64; принудительная эмуляция amd64 на Apple Silicon не требуется.
 
-`requirements-lock.txt` содержит 50 runtime-пакетов, `requirements-dev-lock.txt` — 53 dev-пакета, включая транзитивные зависимости и полученные из registry SHA256. `torch==2.13.0+cpu` разрешён из `https://download.pytorch.org/whl/cpu`; CUDA/NVIDIA wheels не входят в lock. Docker и CI используют `--require-hashes`.
+`requirements-lock.txt` закрепляет runtime для Linux amd64, `requirements-arm64-lock.txt` — для Linux arm64, `requirements-dev-lock.txt` — dev-среду amd64. Все lock-файлы включают транзитивные зависимости и SHA256 из registry. PyTorch устанавливается из CPU index `https://download.pytorch.org/whl/cpu`; CUDA/NVIDIA wheels в образ не входят. Docker выбирает lock по `TARGETARCH` и устанавливает его с `--require-hashes`.
+
+Workflow [Docker Mac CPU](https://github.com/A2aZel/judicial-system/actions/workflows/docker-mac.yml) собирает каждую архитектуру на нативном runner, запускает HTTP smoke с синтетическими записями и проверяет CPU-only PyTorch. Только после проверки публикуется тот же образ; общий manifest `mac8gb` и `sha-<commit>` создаётся после успеха обеих архитектур. Используется встроенный `GITHUB_TOKEN` с `packages: write`, отдельный registry secret не нужен. Первый GHCR package по умолчанию private: для анонимного `pull` владелец должен установить ему public visibility в настройках package ([GitHub Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#pushing-container-images)).
 
 Перегенерация lock после осознанного обновления прямых зависимостей:
 
@@ -81,13 +121,20 @@ uv pip compile requirements.txt --python-platform x86_64-manylinux_2_28 \
   --python-version 3.12 --torch-backend cpu --generate-hashes \
   --emit-index-url --emit-index-annotation --annotation-style line \
   --output-file requirements-lock.txt
+uv pip compile requirements.txt --constraint requirements-lock.txt \
+  --python-platform aarch64-manylinux_2_28 \
+  --python-version 3.12 --torch-backend cpu \
+  --extra-index-url https://download.pytorch.org/whl/cpu \
+  --index-strategy unsafe-best-match --generate-hashes \
+  --emit-index-url --emit-index-annotation --annotation-style line \
+  --output-file requirements-arm64-lock.txt
 uv pip compile requirements-dev.txt --python-platform x86_64-manylinux_2_28 \
   --python-version 3.12 --torch-backend cpu --generate-hashes \
   --emit-index-url --emit-index-annotation --annotation-style line \
   --output-file requirements-dev-lock.txt
 ```
 
-После генерации сохраните `--extra-index-url https://download.pytorch.org/whl/cpu` в обоих lock-файлах: `uv` указывает CPU index в provenance torch, но не всегда эмитит его как глобальную опцию.
+После генерации сохраните `--extra-index-url https://download.pytorch.org/whl/cpu` во всех lock-файлах: `uv` указывает CPU index в provenance torch, но не всегда эмитит его как глобальную опцию.
 
 ## Конфигурация
 
@@ -229,7 +276,7 @@ docker compose config --quiet
 python -c "from fastapi.testclient import TestClient; from app import app; c=TestClient(app); print(c.get('/api/v1/health').json())"
 ```
 
-UI-тесты используют только встроенный Node test runner, отдельных npm-зависимостей нет. CI использует hashed dev lock для pytest, запускает UI regression tests на Node 24 и отдельно выполняет Docker build. Для production ещё нужны независимая юридическая проверка правил и данных, обучение/калибровка/внешняя валидация и одобрение risk artifact, управление секретами, TLS/reverse proxy, rate limiting, мониторинг, резервное копирование и нагрузочные проверки.
+UI-тесты используют только встроенный Node test runner, отдельных npm-зависимостей нет. CI использует hashed dev lock для pytest, запускает UI regression tests на Node 24 и отдельно проверяет запущенный Docker-контейнер через stdlib HTTP smoke, без dev-зависимости `httpx` в runtime. Для production ещё нужны независимая юридическая проверка правил и данных, обучение/калибровка/внешняя валидация и одобрение risk artifact, управление секретами, TLS/reverse proxy, rate limiting, мониторинг, резервное копирование и нагрузочные проверки.
 
 
 ## Dense kNN (`deepvk/USER-bge-m3`)

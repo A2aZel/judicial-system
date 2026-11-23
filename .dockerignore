@@ -6,5 +6,14 @@
 !ui/**
 !requirements.txt
 !requirements-lock.txt
+!requirements-arm64-lock.txt
 !pyproject.toml
 !README.md
+!fixtures/
+fixtures/**
+!fixtures/synthetic_analysis.csv
+!tools/
+tools/**
+!tools/docker_smoke.py
+**/__pycache__/
+**/*.py[cod]

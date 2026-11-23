@@ -11,6 +11,7 @@ venv/
 .env
 .env.*
 !.env.example
+!.env.mac.example
 
 # Models and runtime data (root-only; keep judicial_ai/models tracked)
 /models/
