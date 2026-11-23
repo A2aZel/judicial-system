@@ -14,6 +14,8 @@ from judicial_ai.corpus.punishment_outcome import (
     extract_principal_outcome,
 )
 from judicial_ai.corpus.records import CaseRecord
+from judicial_ai.corpus.sentencing_factors import extract_sentencing_factors
+from judicial_ai.factors import verified_factor_list
 
 
 _JUDGE_SIGNATURE = re.compile(
@@ -140,6 +142,8 @@ class ProcessedRepository:
         amount_rub = _number(facts.get("amount_rub"), MAX_AMOUNT_RUB)
         facts_trusted = _optional_bool(facts.get("recommendation_facts_trusted")) is True
         recommendation_amount_rub = None
+        recommendation_mitigating = None
+        recommendation_aggravating = None
         principal = UNKNOWN_OUTCOME
         if (
             len(parts) == 1
@@ -159,6 +163,11 @@ class ProcessedRepository:
                 recommendation_amount_rub = amount_rub
             elif principal[0] is not None and narrative:
                 recommendation_amount_rub = extract_bribe_amount(narrative)
+            if facts_trusted:
+                recommendation_mitigating = verified_factor_list(facts.get("mitigating"), "mitigating")
+                recommendation_aggravating = verified_factor_list(facts.get("aggravating"), "aggravating")
+            elif principal[1] is not None and narrative:
+                recommendation_mitigating, recommendation_aggravating = extract_sentencing_factors(narrative)
         principal_punishment, principal_value, principal_conditional = principal
         group = payload.get("verdict_group_id")
         group = (group.strip() or None) if isinstance(group, str) else None
@@ -193,6 +202,8 @@ class ProcessedRepository:
                 _recommendation_text_hash(narrative, payload.get("source")) if narrative else None
             ),
             recommendation_amount_rub=recommendation_amount_rub,
+            recommendation_mitigating=recommendation_mitigating,
+            recommendation_aggravating=recommendation_aggravating,
         )
         return ProcessedCase(
             record=record,

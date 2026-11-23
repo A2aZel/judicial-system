@@ -137,6 +137,17 @@ def check(
             and not outside_demo["alternatives"],
             "analysis: reused demo recommendation for a distant bribe amount",
         )
+        for factor, expected_months in (("группа лиц", 18), ("рецидив преступлений", 24)):
+            matching_factor = fetch_json(
+                "/api/v1/analyses", {"case": {**case, "aggravating": [factor]}, "top_k": 3}
+            )["recommendation"]
+            require(
+                matching_factor["status"] == "available"
+                and matching_factor["matching_cases"] == 3
+                and matching_factor["unit"] == "months"
+                and matching_factor["suggested_value"] == expected_months,
+                f"analysis: unexpected demo recommendation for aggravating factor {factor!r}",
+            )
     return records, len(analogues), status
 
 

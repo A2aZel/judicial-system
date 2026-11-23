@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from judicial_ai.factors import canonical_factors
 from judicial_ai.schemas.case import CaseInput, DraftPunishment
 
 
@@ -15,6 +16,8 @@ class CaseCard:
     mitigating_count: int
     aggravating_count: int
     narrative: str | None
+    mitigating_factors: frozenset[str] = frozenset()
+    aggravating_factors: frozenset[str] = frozenset()
 
     @classmethod
     def from_input(cls, case: CaseInput) -> "CaseCard":
@@ -29,6 +32,8 @@ class CaseCard:
             mitigating_count=len(case.mitigating),
             aggravating_count=len(case.aggravating),
             narrative=case.narrative,
+            mitigating_factors=canonical_factors(case.mitigating, "mitigating"),
+            aggravating_factors=canonical_factors(case.aggravating, "aggravating"),
         )
 
 

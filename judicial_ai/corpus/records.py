@@ -28,3 +28,5 @@ class CaseRecord:
     recommendation_group: str | None = None
     recommendation_text_hash: str | None = None
     recommendation_amount_rub: float | None = None
+    recommendation_mitigating: frozenset[str] | None = None
+    recommendation_aggravating: frozenset[str] | None = None

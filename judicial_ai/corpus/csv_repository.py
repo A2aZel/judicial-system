@@ -1,4 +1,5 @@
 import csv
+import json
 import logging
 import math
 from pathlib import Path
@@ -9,6 +10,7 @@ from judicial_ai.corpus.punishment_outcome import (
     explicit_principal_outcome,
 )
 from judicial_ai.corpus.records import CaseRecord
+from judicial_ai.factors import FactorGroup, verified_factor_list
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,15 @@ def _int(value: str | None, minimum: int, maximum: int) -> int | None:
     if not parsed.is_integer() or parsed < minimum:
         raise ValueError("counter must be an integer in range")
     return int(parsed)
+
+
+def _verified_factors(value: str | None, group: FactorGroup) -> frozenset[str] | None:
+    if not value or not value.strip():
+        return None
+    parsed = json.loads(value)
+    if not isinstance(parsed, list):
+        raise ValueError("verified factors must be a JSON list")
+    return verified_factor_list(parsed, group)
 
 
 class CsvCorpusRepository:
@@ -125,6 +136,8 @@ class CsvCorpusRepository:
                             principal_value=principal_value,
                             principal_conditional=principal_conditional,
                             recommendation_group=(row.get("verdict_group_id") or "").strip() or None,
+                            recommendation_mitigating=_verified_factors(row.get("mitigating_factors"), "mitigating"),
+                            recommendation_aggravating=_verified_factors(row.get("aggravating_factors"), "aggravating"),
                         )
                     )
                 except (TypeError, ValueError, OverflowError):

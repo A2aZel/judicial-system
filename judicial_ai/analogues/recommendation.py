@@ -32,8 +32,11 @@ def recommend_punishment(
     )
     matching = len(exact_cohort)
     amount = case.amount_rub
+    selected_factors = case.mitigating_factors | case.aggravating_factors
     if not matching:
         reasons = ["Нет дел с той же единственной частью ст. 290 и совпадающими режимами."]
+        if selected_factors:
+            reasons.append(_factor_matching_reason(selected_factors, 0, 0))
         if amount is not None:
             reasons.append(_amount_matching_reason(amount, 0, 0))
         return PunishmentRecommendation(data_source=data_source, reasons=reasons)
@@ -48,15 +51,27 @@ def recommend_punishment(
             reasons=["Ориентир по отдельному составу недоступен при совокупности преступлений по ст. 69."],
         )
     reasons = [matching_reason]
+    if selected_factors:
+        exact_cohort = tuple(
+            record for record in exact_cohort
+            if case.mitigating_factors.issubset(record.recommendation_mitigating or ())
+            and case.aggravating_factors.issubset(record.recommendation_aggravating or ())
+        )
+        reasons.append(_factor_matching_reason(selected_factors, len(exact_cohort), matching))
+        matching = len(exact_cohort)
     if amount is not None:
         ranking_cohort = _amount_cohort(exact_cohort, amount)
         reasons.append(_amount_matching_reason(amount, len(ranking_cohort), matching))
         matching = len(ranking_cohort)
-        if not matching:
-            return PunishmentRecommendation(data_source=data_source, reasons=reasons)
     else:
         reasons.append("Сумма взятки в запросе не указана.")
-        ranking_cohort = tuple(record for record in exact_cohort if record.recommendation_facts_trusted)
+        ranking_cohort = exact_cohort if selected_factors else tuple(
+            record for record in exact_cohort if record.recommendation_facts_trusted
+        )
+    if not matching:
+        return PunishmentRecommendation(data_source=data_source, reasons=reasons)
+    if selected_factors:
+        ranking_cohort = _factor_ranking_cohort(ranking_cohort, case)
 
     if ranking_cohort:
         structured = KNNAnalogueFinder(ranking_cohort).search(case, MAX_NEIGHBORS)
@@ -77,10 +92,13 @@ def recommend_punishment(
         selected_cases = tuple(neighbor.record for neighbor in structured.neighbors)
         sample_description = "ближайших дел"
     else:
-        reasons.append(
-            "Числовые признаки из полных приговоров требуют проверки. "
-            "Историческая оценка учитывает всю группу после отбора по части статьи и режимам."
-        )
+        if selected_factors:
+            reasons.append("Оценка учитывает все исходы дел с подтверждёнными отмеченными обстоятельствами.")
+        else:
+            reasons.append(
+                "Числовые признаки из полных приговоров требуют проверки. "
+                "Историческая оценка учитывает всю группу после отбора по части статьи и режимам."
+            )
         selected_cases = exact_cohort
         sample_description = "отобранных дел"
 
@@ -153,6 +171,25 @@ def recommend_punishment(
     )
 
 
+def _factor_ranking_cohort(records: tuple[CaseRecord, ...], case: CaseCard) -> tuple[CaseRecord, ...]:
+    compare_amount = case.amount_rub is not None
+    compare_episodes = case.episodes is not None and all(
+        record.recommendation_facts_trusted and record.episodes is not None for record in records
+    )
+    if not compare_amount and not compare_episodes:
+        return ()
+    return tuple(
+        replace(
+            record,
+            amount_rub=record.amount_rub if compare_amount else None,
+            episodes=record.episodes if compare_episodes else None,
+            mitigating_count=None,
+            aggravating_count=None,
+        )
+        for record in records
+    )
+
+
 def _amount_cohort(records: tuple[CaseRecord, ...], target: float) -> tuple[CaseRecord, ...]:
     if not isfinite(target) or target <= 0:
         return ()
@@ -173,6 +210,14 @@ def _amount_cohort(records: tuple[CaseRecord, ...], target: float) -> tuple[Case
     return tuple(
         replace(record, amount_rub=amount, episodes=None, mitigating_count=None, aggravating_count=None)
         for record, amount in matched
+    )
+
+
+def _factor_matching_reason(factors: frozenset[str], matched: int, total: int) -> str:
+    names = ", ".join(sorted(factors))
+    return (
+        f"По отмеченным обстоятельствам ({names}) подошло {matched} из {total} дел. "
+        "В расчёт входят дела с подтверждением каждого из перечисленных обстоятельств."
     )
 
 

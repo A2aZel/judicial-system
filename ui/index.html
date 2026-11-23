@@ -106,7 +106,7 @@
             <p class="field-hint" id="case-flags-hint">Отмечайте известные обстоятельства и процессуальные условия.</p>
           </fieldset>
 
-          <fieldset class="form-section">
+          <fieldset class="form-section" aria-describedby="factors-hint">
             <legend>Смягчающие обстоятельства</legend>
             <div class="check-grid factors-grid">
               <label class="check-control"><input type="checkbox" name="mitigating" value="явка с повинной"><span>Явка с повинной</span></label>
@@ -125,6 +125,7 @@
                 <label class="check-control"><input type="checkbox" name="aggravating" value="причинение тяжких последствий"><span>Тяжкие последствия</span></label>
               </div>
             </details>
+            <p class="field-hint" id="factors-hint">Для рекомендации нужны дела, в которых суд подтвердил все отмеченные обстоятельства. Если таких дел мало, рекомендация недоступна.</p>
             <div class="field field-full narrative-field">
               <label for="narrative">Краткие обстоятельства <span class="optional">необязательно</span></label>
               <textarea id="narrative" name="narrative" rows="4" maxlength="4000" placeholder="Только сведения, значимые для квалификации и назначения наказания" aria-describedby="narrative-hint narrative-counter"></textarea>
