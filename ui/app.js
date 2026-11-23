@@ -1026,8 +1026,8 @@
     document.getElementById("analogues-count").textContent = String(list.length);
     const rankingAvailable = modelInfo?.knn?.ranking_available === true;
     document.getElementById("analogues-description").textContent = rankingAvailable
-      ? "Ранжирование по близости к введённым обстоятельствам"
-      : "Неранжированная подвыборка cohort; порядок не означает близость дел";
+      ? "Ранжирование по близости в общей выборке по части статьи и процессуальным условиям"
+      : "Подвыборка по части статьи и процессуальным условиям без ранжирования по близости";
     const container = document.getElementById("analogues-content");
     if (!list.length) {
       replaceContent(container, createNeutralEmpty("API не вернул судебных аналогов по заданным параметрам."));
@@ -1151,6 +1151,15 @@
     return storedToken;
   }
 
+  function showEmptyAnalysis() {
+    currentAnalysis = null;
+    results.hidden = true;
+    errorState.hidden = true;
+    emptyState.hidden = false;
+    printButton.hidden = true;
+    clearAnalysisModelInfo();
+  }
+
   if (hasDOM) {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -1161,6 +1170,10 @@
       if (event.target.matches("input, select, textarea")) {
         event.target.removeAttribute("aria-invalid");
         if (!form.querySelector("[aria-invalid=true]")) formErrors.hidden = true;
+        if (currentAnalysis && event.target.name) {
+          showEmptyAnalysis();
+          requestStatus.textContent = "Данные дела изменены. Выполните анализ повторно.";
+        }
       }
     });
 
@@ -1176,12 +1189,7 @@
       form.querySelectorAll("[aria-invalid]").forEach((field) => field.removeAttribute("aria-invalid"));
       document.getElementById("narrative-counter").textContent = "0 / 4 000";
       document.getElementById("aggravating-count").hidden = true;
-      results.hidden = true;
-      errorState.hidden = true;
-      emptyState.hidden = false;
-      printButton.hidden = true;
-      currentAnalysis = null;
-      clearAnalysisModelInfo();
+      showEmptyAnalysis();
       requestStatus.textContent = "Форма и результаты очищены. Токен доступа сохранён.";
       form.elements.article_part.focus();
     });

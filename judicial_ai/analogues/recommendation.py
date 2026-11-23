@@ -1,3 +1,4 @@
+from dataclasses import replace
 from math import isfinite
 from typing import Literal
 
@@ -13,6 +14,8 @@ from judicial_ai.schemas.analysis import (
 
 MAX_NEIGHBORS = 20
 MIN_SUPPORT = 3
+# A threefold window keeps amounts an order of magnitude apart in disjoint cohorts.
+AMOUNT_RATIO_LIMIT = 3
 FEATURE_NAMES = {
     "amount_rub": "сумма взятки в рублях",
     "episodes": "число эпизодов",
@@ -28,11 +31,12 @@ def recommend_punishment(
         tuple(record for record in structured_cohort if record.article_parts == (case.article_part,))
     )
     matching = len(exact_cohort)
+    amount = case.amount_rub
     if not matching:
-        return PunishmentRecommendation(
-            data_source=data_source,
-            reasons=["Нет дел с той же единственной частью ст. 290 и совпадающими режимами."]
-        )
+        reasons = ["Нет дел с той же единственной частью ст. 290 и совпадающими режимами."]
+        if amount is not None:
+            reasons.append(_amount_matching_reason(amount, 0, 0))
+        return PunishmentRecommendation(data_source=data_source, reasons=reasons)
     matching_reason = (
         f"Выбраны дела с единственной частью {case.article_part} ст. 290 и совпадающими "
         "признаками особого порядка, досудебного соглашения, ст. 64 и ст. 69."
@@ -43,10 +47,19 @@ def recommend_punishment(
             matching_cases=matching,
             reasons=["Ориентир по отдельному составу недоступен при совокупности преступлений по ст. 69."],
         )
-    trusted = tuple(record for record in exact_cohort if record.recommendation_facts_trusted)
     reasons = [matching_reason]
-    if trusted:
-        structured = KNNAnalogueFinder(trusted).search(case, MAX_NEIGHBORS)
+    if amount is not None:
+        ranking_cohort = _amount_cohort(exact_cohort, amount)
+        reasons.append(_amount_matching_reason(amount, len(ranking_cohort), matching))
+        matching = len(ranking_cohort)
+        if not matching:
+            return PunishmentRecommendation(data_source=data_source, reasons=reasons)
+    else:
+        reasons.append("Сумма взятки в запросе не указана.")
+        ranking_cohort = tuple(record for record in exact_cohort if record.recommendation_facts_trusted)
+
+    if ranking_cohort:
+        structured = KNNAnalogueFinder(ranking_cohort).search(case, MAX_NEIGHBORS)
         if not structured.ranking_available:
             return PunishmentRecommendation(
                 data_source=data_source,
@@ -60,7 +73,7 @@ def recommend_punishment(
             features.append(
                 f"{label} — {value:.15g}" if value is not None else f"{label} — медиана выборки"
             )
-        reasons.append("При сравнении учтены " + ", ".join(features) + ".")
+        reasons.append("Признаки сравнения — " + ", ".join(features) + ".")
         selected_cases = tuple(neighbor.record for neighbor in structured.neighbors)
         sample_description = "ближайших дел"
     else:
@@ -138,6 +151,40 @@ def recommend_punishment(
         usable_outcomes=usable,
         reasons=reasons,
     )
+
+
+def _amount_cohort(records: tuple[CaseRecord, ...], target: float) -> tuple[CaseRecord, ...]:
+    if not isfinite(target) or target <= 0:
+        return ()
+    lower_bound = target / AMOUNT_RATIO_LIMIT
+    upper_bound = target * AMOUNT_RATIO_LIMIT
+    matched: list[tuple[CaseRecord, float]] = []
+    for record in records:
+        amount = record.recommendation_amount_rub
+        if amount is None and record.recommendation_facts_trusted:
+            amount = record.amount_rub
+        if amount is None or not isfinite(amount) or amount <= 0:
+            continue
+        if lower_bound <= amount <= upper_bound:
+            matched.append((record, amount))
+    if all(record.recommendation_facts_trusted for record, _ in matched):
+        return tuple(replace(record, amount_rub=amount) for record, amount in matched)
+    # Compare the whole group by amount when other facts are not consistently trusted.
+    return tuple(
+        replace(record, amount_rub=amount, episodes=None, mitigating_count=None, aggravating_count=None)
+        for record, amount in matched
+    )
+
+
+def _amount_matching_reason(amount: float, matched: int, total: int) -> str:
+    if not isfinite(amount) or amount <= 0:
+        criterion = "Для подбора нужна положительная сумма взятки."
+    else:
+        criterion = (
+            "Подбор требует подтверждённой суммы взятки, которая отличается от указанной "
+            f"максимум в {AMOUNT_RATIO_LIMIT} раза."
+        )
+    return f"Для суммы {amount:.15g} руб. подошло {matched} из {total} дел. {criterion}"
 
 
 def _estimate(values: list[float], term_conditionals: set[bool | None] | None) -> PunishmentEstimate:

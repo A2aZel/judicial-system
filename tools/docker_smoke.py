@@ -55,23 +55,18 @@ def check(
     ui, content_type = fetch("/")
     require(content_type == "text/html" and b"<html" in ui.lower(), "UI: HTML unavailable")
 
-    analysis = fetch_json(
-        "/api/v1/analyses",
-        {
-            "case": {
-                "article_part": "3",
-                "amount_rub": 150000,
-                "episodes": 1,
-                "special_order": False,
-                "pretrial_agreement": False,
-                "art_64": False,
-                "art_69": False,
-                "mitigating": [],
-                "aggravating": [],
-            },
-            "top_k": 3,
-        },
-    )
+    case = {
+        "article_part": "3",
+        "amount_rub": 150000,
+        "episodes": 1,
+        "special_order": False,
+        "pretrial_agreement": False,
+        "art_64": False,
+        "art_69": False,
+        "mitigating": [],
+        "aggravating": [],
+    }
+    analysis = fetch_json("/api/v1/analyses", {"case": case, "top_k": 3})
     analogues = analysis.get("analogues")
     require(isinstance(analogues, list) and bool(analogues), "analysis: no analogues")
     require(
@@ -132,6 +127,16 @@ def check(
         require(values == sorted(values), "analysis: recommendation lies outside its range")
     else:
         require(all(value is None for value in values), "analysis: unavailable recommendation has values")
+    if recommendation["data_source"] == "synthetic":
+        outside_demo = fetch_json(
+            "/api/v1/analyses", {"case": {**case, "amount_rub": 15_000_000}, "top_k": 3}
+        )["recommendation"]
+        require(
+            outside_demo["status"] == "unavailable"
+            and outside_demo["suggested_value"] is None
+            and not outside_demo["alternatives"],
+            "analysis: reused demo recommendation for a distant bribe amount",
+        )
     return records, len(analogues), status
 
 

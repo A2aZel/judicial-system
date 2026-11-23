@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from judicial_ai.corpus.bribe_amount import MAX_AMOUNT_RUB, extract_bribe_amount
 from judicial_ai.corpus.punishment_outcome import (
     ARTICLE_290_PARTS,
     UNKNOWN_OUTCOME,
@@ -136,6 +137,9 @@ class ProcessedRepository:
         conditional = _optional_bool(punishment.get("conditional"))
         parts = _parts(payload.get("article_parts"))
         art_69 = _optional_bool(process.get("art_69"))
+        amount_rub = _number(facts.get("amount_rub"), MAX_AMOUNT_RUB)
+        facts_trusted = _optional_bool(facts.get("recommendation_facts_trusted")) is True
+        recommendation_amount_rub = None
         principal = UNKNOWN_OUTCOME
         if (
             len(parts) == 1
@@ -151,6 +155,10 @@ class ProcessedRepository:
             )
             if principal == UNKNOWN_OUTCOME and narrative:
                 principal = extract_principal_outcome(narrative, parts[0])
+            if facts_trusted and amount_rub is not None and amount_rub > 0:
+                recommendation_amount_rub = amount_rub
+            elif principal[0] is not None and narrative:
+                recommendation_amount_rub = extract_bribe_amount(narrative)
         principal_punishment, principal_value, principal_conditional = principal
         group = payload.get("verdict_group_id")
         group = (group.strip() or None) if isinstance(group, str) else None
@@ -160,7 +168,7 @@ class ProcessedRepository:
             pretrial_agreement=_optional_bool(process.get("pretrial_agreement")),
             art_64=_optional_bool(process.get("art_64")),
             art_69=art_69,
-            amount_rub=_number(facts.get("amount_rub"), 1_000_000_000_000),
+            amount_rub=amount_rub,
             episodes=_counter(facts.get("episodes"), 1, 1000),
             mitigating_count=_factor_count(facts.get("mitigating", [])),
             aggravating_count=_factor_count(facts.get("aggravating", [])),
@@ -179,11 +187,12 @@ class ProcessedRepository:
             principal_punishment=principal_punishment,
             principal_value=principal_value,
             principal_conditional=principal_conditional,
-            recommendation_facts_trusted=_optional_bool(facts.get("recommendation_facts_trusted")) is True,
+            recommendation_facts_trusted=facts_trusted,
             recommendation_group=group,
             recommendation_text_hash=(
                 _recommendation_text_hash(narrative, payload.get("source")) if narrative else None
             ),
+            recommendation_amount_rub=recommendation_amount_rub,
         )
         return ProcessedCase(
             record=record,

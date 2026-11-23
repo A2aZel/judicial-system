@@ -170,7 +170,7 @@ def test_facts_only_recommendation_uses_twenty_closest_for_principal_fine(
     corpus = tmp_path / "outcomes.csv"
     write_outcome_corpus(
         corpus,
-        [("imprisonment", "18", "500000")] * 20
+        [("imprisonment", "18", "450000")] * 20
         + [("fine", "100000", "150000")] * 10
         + [("fine", "200000", "150000")] * 10,
     )
@@ -251,7 +251,7 @@ def test_facts_only_recommendation_abstains_without_supported_majority(
     assert body["model_info"]["knn"]["ranking_available"] is ranked
     recommendation = body["recommendation"]
     assert recommendation["status"] == "unavailable"
-    assert recommendation["matching_cases"] == terms + fines
+    assert recommendation["matching_cases"] == (terms + fines if ranked else 0)
     assert recommendation["usable_outcomes"] == usable
     assert recommendation["selected_outcomes"] == 0
     assert recommendation["kind"] is None
@@ -294,8 +294,17 @@ def test_facts_only_legacy_verdicts_report_deduplicated_historical_tie(
     settings = settings.model_copy(update={"processed_repository_path": corpus, "dense_enabled": False})
     with TestClient(create_app(settings)) as client:
         response = client.post("/api/v1/analyses", json={"case": valid_payload["case"]})
+        valid_payload["case"].pop("amount_rub")
+        no_amount_response = client.post("/api/v1/analyses", json={"case": valid_payload["case"]})
     assert response.status_code == 200, response.text
-    recommendation = response.json()["recommendation"]
+    by_amount = response.json()["recommendation"]
+    assert by_amount["status"] == "unavailable"
+    assert by_amount["matching_cases"] == by_amount["usable_outcomes"] == 0
+    assert by_amount["alternatives"] == []
+    assert any("150000 руб." in reason and "0 из 6" in reason for reason in by_amount["reasons"])
+
+    assert no_amount_response.status_code == 200, no_amount_response.text
+    recommendation = no_amount_response.json()["recommendation"]
     assert recommendation["data_source"] == "case_corpus"
     assert recommendation["status"] == "unavailable"
     assert recommendation["matching_cases"] == recommendation["usable_outcomes"] == 6
@@ -306,6 +315,96 @@ def test_facts_only_legacy_verdicts_report_deduplicated_historical_tie(
     ] == [("imprisonment", "conditional", 24), ("fine", None, 200000)]
     assert all("сумма взятки в рублях" not in reason for reason in recommendation["reasons"])
     assert "example-" not in response.text
+
+
+def test_recommendation_uses_recovered_amount_without_legacy_ranking_facts(
+    settings: Settings, valid_payload: dict, tmp_path: Path
+) -> None:
+    corpus = tmp_path / "retrieval_cases.jsonl"
+    facts_by_case = [
+        {
+            "amount_rub": 1500000,
+            "episodes": 999,
+            "narrative": (
+                f"УСТАНОВИЛ:\nПодсудимый получил взятку в размере {amount} рублей.\n"
+                "ПРИГОВОРИЛ:\nПризнать подсудимого виновным по ч. 3 ст. 290 УК РФ."
+            ),
+        }
+        for amount in (100000, 150000, 200000)
+    ]
+    facts_by_case.extend((
+        {"amount_rub": 150000, "episodes": 1, "recommendation_facts_trusted": True},
+        {"amount_rub": 150000, "episodes": 1},
+    ))
+    rows = [
+        {
+            "schema_version": 1,
+            "case_id": f"example-{index}",
+            "article_parts": ["3"],
+            "process": dict.fromkeys(("special_order", "pretrial_agreement", "art_64", "art_69"), False),
+            "facts": facts,
+            "punishment": {"principal_punishment": "imprisonment", "principal_value": value},
+        }
+        for index, (facts, value) in enumerate(zip(facts_by_case, (12, 24, 36, 60, 120), strict=True))
+    ]
+    corpus.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+    settings = settings.model_copy(update={"processed_repository_path": corpus, "dense_enabled": False})
+    with TestClient(create_app(settings)) as client:
+        response = client.post("/api/v1/analyses", json={"case": valid_payload["case"]})
+    assert response.status_code == 200, response.text
+    recommendation = response.json()["recommendation"]
+    assert recommendation["status"] == "available"
+    assert recommendation["matching_cases"] == recommendation["usable_outcomes"] == 4
+    assert recommendation["suggested_value"] == 30
+    assert "Признаки сравнения — сумма взятки в рублях — 150000." in recommendation["reasons"]
+
+
+@pytest.mark.parametrize(
+    ("amount", "matching", "kind", "suggested"),
+    [
+        (0, 0, None, None),
+        (150000, 3, "imprisonment", 24),
+        (1500000, 3, "fine", 200000),
+        (15000000, 0, None, None),
+    ],
+)
+def test_recommendation_uses_only_nearby_known_amounts(
+    settings: Settings,
+    valid_payload: dict,
+    tmp_path: Path,
+    amount: int,
+    matching: int,
+    kind: str | None,
+    suggested: int | None,
+) -> None:
+    corpus = tmp_path / "outcomes.csv"
+    write_outcome_corpus(
+        corpus,
+        [
+            ("imprisonment", "12", "50000"),
+            ("imprisonment", "24", "150000"),
+            ("imprisonment", "36", "450000"),
+            ("fine", "100000", "500000"),
+            ("fine", "200000", "1500000"),
+            ("fine", "300000", "4500000"),
+            ("fine", "5000000", ""),
+        ],
+    )
+    valid_payload["case"]["amount_rub"] = amount
+    with TestClient(create_app(settings.model_copy(update={"corpus_path": corpus}))) as client:
+        response = client.post("/api/v1/analyses", json={"case": valid_payload["case"]})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["punishment_summary"]["candidate_count"] == 7
+    recommendation = body["recommendation"]
+    assert recommendation["matching_cases"] == recommendation["usable_outcomes"] == matching
+    assert recommendation["status"] == ("available" if kind else "unavailable")
+    assert recommendation["kind"] == kind
+    assert recommendation["suggested_value"] == suggested
+    assert any(
+        f"{amount} руб." in reason and f"{matching} из 7" in reason
+        for reason in recommendation["reasons"]
+    )
 
 
 def test_empty_analogues_are_not_hidden(client: TestClient, valid_payload: dict) -> None:

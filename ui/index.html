@@ -89,7 +89,8 @@
             <div class="field-grid">
               <div class="field">
                 <label for="amount-rub">Сумма взятки, ₽ <span class="optional">необязательно</span></label>
-                <input id="amount-rub" name="amount_rub" type="number" min="0" max="1000000000000" step="0.01" inputmode="decimal" placeholder="0">
+                <input id="amount-rub" name="amount_rub" type="number" min="0" max="1000000000000" step="0.01" inputmode="decimal" placeholder="0" aria-describedby="amount-hint">
+                <p class="field-hint" id="amount-hint">Если сумма задана, для рекомендации нужны дела с близкими проверенными суммами.</p>
               </div>
               <div class="field">
                 <label for="episodes">Количество эпизодов</label>
@@ -167,7 +168,7 @@
               <span id="submit-label">Выполнить анализ</span>
               <svg class="submit-arrow" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3 8h9M9 4l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </button>
-            <p class="submit-hint">Перед отправкой проверьте корректность введённых данных.</p>
+            <p class="submit-hint">После изменения данных запустите анализ заново.</p>
           </div>
         </form>
       </aside>
@@ -200,8 +201,8 @@
           <div class="state-icon" aria-hidden="true">
             <svg viewBox="0 0 32 32" width="32" height="32"><path d="M7 4h12l6 6v18H7V4Zm12 0v7h6M11 17h10M11 21h10M11 13h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
-          <h3>Анализ ещё не выполнен</h3>
-          <p>Заполните карточку дела и запустите анализ. Здесь появятся судебные аналоги и рекомендация, если данных достаточно.</p>
+          <h3>Нет анализа для текущих данных</h3>
+          <p>Нажмите «Выполнить анализ», чтобы найти судебные аналоги. Рекомендация появится, если данных достаточно.</p>
         </section>
 
         <div id="analysis-results" hidden tabindex="-1">
@@ -238,7 +239,12 @@
             </section>
 
             <section class="result-section summary-section" aria-labelledby="summary-title">
-              <div class="result-section-heading"><h3 id="summary-title">Сводка наказаний</h3></div>
+              <div class="result-section-heading">
+                <div>
+                  <h3 id="summary-title">Сводка наказаний</h3>
+                  <p class="section-description">По части статьи и процессуальным условиям</p>
+                </div>
+              </div>
               <div id="punishment-summary"></div>
             </section>
           </div>

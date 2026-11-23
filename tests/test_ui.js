@@ -238,6 +238,9 @@ test("Анализ отправляет обстоятельства дела и
     },
     top_k: 10
   });
+
+  fields.set("amount_rub", "150000000.25");
+  assert.equal(ui.buildRequest(fields).case.amount_rub, 150000000.25);
 });
 
 test("API: HTML 200 и invalid JSON не считаются успешным ответом", async () => {

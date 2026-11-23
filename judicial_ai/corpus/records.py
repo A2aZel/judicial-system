@@ -27,3 +27,4 @@ class CaseRecord:
     recommendation_facts_trusted: bool = True
     recommendation_group: str | None = None
     recommendation_text_hash: str | None = None
+    recommendation_amount_rub: float | None = None
