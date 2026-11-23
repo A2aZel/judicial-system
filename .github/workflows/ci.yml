@@ -49,7 +49,7 @@ jobs:
             sleep 1
           done
           test "$ready" = true
-          python3 tools/docker_smoke.py --base-url http://127.0.0.1:8000
+          python3 tools/docker_smoke.py --base-url http://127.0.0.1:8000 --require-recommendation
       - name: Show container logs on failure
         if: failure()
         run: docker logs judicial-ci || true

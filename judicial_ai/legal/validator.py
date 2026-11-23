@@ -1,4 +1,4 @@
-from judicial_ai.case_card import AnalysisCard
+from judicial_ai.case_card import AnalysisCard, CaseCard
 from judicial_ai.schemas.analysis import LegalCheck
 
 
@@ -8,7 +8,6 @@ class LegalValidator:
     def validate(self, card: AnalysisCard) -> list[LegalCheck]:
         checks: list[LegalCheck] = []
         draft = card.draft
-        case = card.case
         has_primary_punishment = any(
             value is not None and value > 0
             for value in (
@@ -55,6 +54,9 @@ class LegalValidator:
                 ),
             )
         )
+        return checks + self.validate_case(card.case)
+
+    def validate_case(self, case: CaseCard) -> list[LegalCheck]:
         if case.art_69 and case.episodes == 1:
             episode_status = "warning"
             episode_message = "Указан режим ст. 69, но число эпизодов равно одному; требуется ручная проверка."
@@ -65,18 +67,15 @@ class LegalValidator:
                 if case.episodes is None
                 else "Явного формального противоречия между числом эпизодов и режимом ст. 69 не обнаружено."
             )
-        checks.append(
+        return [
             LegalCheck(
                 code="episode_regime_consistency",
                 status=episode_status,
                 message=episode_message,
-            )
-        )
-        checks.append(
+            ),
             LegalCheck(
                 code="statutory_sanction_limits",
                 status="not_checked",
                 message="Санкции и обязательные ограничения по конкретной редакции закона не проверялись.",
-            )
-        )
-        return checks
+            ),
+        ]

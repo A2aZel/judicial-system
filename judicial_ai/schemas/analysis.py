@@ -9,7 +9,7 @@ class AnalysisRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     case: CaseInput
-    draft_punishment: DraftPunishment
+    draft_punishment: DraftPunishment | None = None
     top_k: int | None = Field(default=None, ge=1, le=50)
 
 
@@ -57,6 +57,36 @@ class PunishmentSummary(BaseModel):
     confiscation: BooleanSummary = Field(default_factory=BooleanSummary)
 
 
+RecommendationSource = Literal["synthetic", "case_corpus"]
+
+
+class PunishmentEstimate(BaseModel):
+    kind: Literal["imprisonment", "fine"]
+    execution: Literal["conditional", "actual", "unspecified"] | None
+    suggested_value: float = Field(gt=0)
+    range_min: float = Field(gt=0)
+    range_max: float = Field(gt=0)
+    unit: Literal["months", "rub"]
+    selected_outcomes: int = Field(gt=0)
+
+
+class PunishmentRecommendation(BaseModel):
+    status: Literal["available", "unavailable"] = "unavailable"
+    data_source: RecommendationSource
+    kind: Literal["imprisonment", "fine"] | None = None
+    execution: Literal["conditional", "actual", "unspecified"] | None = None
+    suggested_value: float | None = Field(default=None, gt=0)
+    range_min: float | None = Field(default=None, gt=0)
+    range_max: float | None = Field(default=None, gt=0)
+    unit: Literal["months", "rub"] | None = None
+    matching_cases: int = Field(default=0, ge=0)
+    usable_outcomes: int = Field(default=0, ge=0)
+    selected_outcomes: int = Field(default=0, ge=0)
+    alternatives: list[PunishmentEstimate] = Field(default_factory=list)
+    reasons: list[str]
+    legal_status: Literal["not_checked"] = "not_checked"
+
+
 class AppealRisk(BaseModel):
     status: Literal["available", "unavailable"] = "unavailable"
     score: float | None = Field(default=None, ge=0, le=1)
@@ -76,6 +106,7 @@ class AnalysisResponse(BaseModel):
     legal_checks: list[LegalCheck]
     analogues: list[Analogue]
     punishment_summary: PunishmentSummary
+    recommendation: PunishmentRecommendation
     appeal_risk: AppealRisk
     warnings: list[str]
     model_info: ModelInfo

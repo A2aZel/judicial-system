@@ -23,7 +23,6 @@
 
   let isSubmitting = false;
   let isCheckingService = false;
-  let lastRequest = null;
   let currentAnalysis = null;
 
   const numberFormatter = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 });
@@ -311,6 +310,63 @@
     requireResponse(summary.rate === null || (isResponseNumber(summary.rate) && summary.rate >= 0 && summary.rate <= 1), `${path}.rate`, "ожидалось число от 0 до 1 или null");
   }
 
+  function validateRecommendation(recommendation) {
+    const path = "recommendation";
+    requireResponse(isObject(recommendation), path, "ожидался объект");
+    requireResponse(["available", "unavailable"].includes(recommendation.status), `${path}.status`, "неизвестный статус");
+    requireResponse(recommendation.legal_status === "not_checked", `${path}.legal_status`, "ожидался not_checked");
+    requireResponse(["synthetic", "case_corpus"].includes(recommendation.data_source), `${path}.data_source`, "неизвестный источник данных");
+    requireResponse(Array.isArray(recommendation.reasons) && recommendation.reasons.every((reason) => typeof reason === "string"), `${path}.reasons`, "ожидался массив строк");
+    const alternatives = recommendation.alternatives;
+    requireResponse(Array.isArray(alternatives), `${path}.alternatives`, "ожидался массив вариантов");
+
+    ["matching_cases", "usable_outcomes", "selected_outcomes"].forEach((key) => {
+      requireResponse(Number.isSafeInteger(recommendation[key]) && recommendation[key] >= 0, `${path}.${key}`, "ожидалось целое число ≥ 0");
+    });
+    requireResponse(recommendation.usable_outcomes <= recommendation.matching_cases, `${path}.usable_outcomes`, "превышает число совпавших дел");
+    requireResponse(recommendation.selected_outcomes <= recommendation.usable_outcomes, `${path}.selected_outcomes`, "превышает число пригодных исходов");
+
+    if (recommendation.status === "unavailable") {
+      ["kind", "execution", "unit", "suggested_value", "range_min", "range_max"].forEach((key) => {
+        requireResponse(recommendation[key] === null, `${path}.${key}`, "для unavailable ожидался null");
+      });
+      requireResponse(recommendation.selected_outcomes === 0, `${path}.selected_outcomes`, "для unavailable ожидался ноль");
+      if (alternatives.length) {
+        const alternativesPath = `${path}.alternatives`;
+        requireResponse(alternatives.length === 2, alternativesPath, "ожидались два варианта");
+        alternatives.forEach((option, index) => {
+          const optionPath = `${alternativesPath}[${index}]`;
+          validateRecommendationMeasure(option, optionPath);
+          requireResponse(option.selected_outcomes >= 3, `${optionPath}.selected_outcomes`, "ожидалось не менее трёх наблюдений");
+        });
+        const [first, second] = alternatives;
+        requireResponse(first.kind !== second.kind, alternativesPath, "ожидались разные виды наказания");
+        requireResponse(first.selected_outcomes === second.selected_outcomes, alternativesPath, "ожидалась равная поддержка вариантов");
+        requireResponse(first.selected_outcomes + second.selected_outcomes <= recommendation.usable_outcomes, alternativesPath, "число исходов в вариантах превышает число пригодных исходов");
+      }
+      return;
+    }
+    requireResponse(alternatives.length === 0, `${path}.alternatives`, "для available ожидался пустой массив");
+    validateRecommendationMeasure(recommendation, path);
+  }
+
+  function validateRecommendationMeasure(option, path) {
+    requireResponse(isObject(option), path, "ожидался объект");
+    requireResponse(["imprisonment", "fine"].includes(option.kind), `${path}.kind`, "неизвестный вид наказания");
+    if (option.kind === "imprisonment") {
+      requireResponse(["conditional", "actual", "unspecified"].includes(option.execution), `${path}.execution`, "неизвестная форма исполнения");
+      requireResponse(option.unit === "months", `${path}.unit`, "для лишения свободы ожидались месяцы");
+    } else {
+      requireResponse(option.execution === null, `${path}.execution`, "для штрафа ожидался null");
+      requireResponse(option.unit === "rub", `${path}.unit`, "для штрафа ожидались рубли");
+    }
+    ["suggested_value", "range_min", "range_max"].forEach((key) => {
+      requireResponse(isResponseNumber(option[key]) && option[key] > 0, `${path}.${key}`, "ожидалось положительное число");
+    });
+    requireResponse(option.range_min <= option.suggested_value && option.suggested_value <= option.range_max, `${path}.suggested_value`, "значение выходит за пределы диапазона");
+    requireResponse(Number.isSafeInteger(option.selected_outcomes) && option.selected_outcomes > 0, `${path}.selected_outcomes`, "ожидалось положительное целое число");
+  }
+
   function validateAnalysisResponse(payload) {
     requireResponse(isObject(payload), "response", "ожидался JSON-объект");
     requireResponse(typeof payload.analysis_id === "string" && payload.analysis_id.trim().length > 0, "analysis_id", "ожидалась непустая строка");
@@ -347,6 +403,8 @@
     });
     ["prison_months", "fine_rub", "ban_years"].forEach((key) => validateNumericSummary(summary[key], `punishment_summary.${key}`));
     ["conditional", "confiscation"].forEach((key) => validateBooleanSummary(summary[key], `punishment_summary.${key}`));
+
+    validateRecommendation(payload.recommendation);
 
     const risk = payload.appeal_risk;
     requireResponse(isObject(risk), "appeal_risk", "ожидался объект");
@@ -498,14 +556,12 @@
       .join("; ");
   }
 
-  function getOptionalNumber(fieldName) {
-    const field = form.elements[fieldName];
-    if (!field || field.value.trim() === "") return undefined;
-    return Number(field.value);
+  function getOptionalNumber(data, fieldName) {
+    const value = data.get(fieldName);
+    return typeof value === "string" && value.trim() !== "" ? Number(value) : undefined;
   }
 
-  function buildRequest() {
-    const data = new FormData(form);
+  function buildRequest(data) {
     const caseData = {
       article_part: String(data.get("article_part") || "").trim(),
       special_order: data.has("special_order"),
@@ -515,24 +571,15 @@
       mitigating: data.getAll("mitigating").map(String),
       aggravating: data.getAll("aggravating").map(String)
     };
-    const amount = getOptionalNumber("amount_rub");
-    const episodes = getOptionalNumber("episodes");
+    const amount = getOptionalNumber(data, "amount_rub");
+    const episodes = getOptionalNumber(data, "episodes");
     const narrative = String(data.get("narrative") || "").trim();
     if (amount !== undefined) caseData.amount_rub = amount;
     if (episodes !== undefined) caseData.episodes = episodes;
     if (narrative) caseData.narrative = narrative;
 
-    const draftPunishment = {
-      conditional: data.has("conditional"),
-      confiscation: data.has("confiscation")
-    };
-    ["prison_months", "fine_rub", "fine_multiple", "ban_years"].forEach((key) => {
-      const value = getOptionalNumber(key);
-      if (value !== undefined) draftPunishment[key] = value;
-    });
-
-    const payload = { case: caseData, draft_punishment: draftPunishment };
-    const topK = getOptionalNumber("top_k");
+    const payload = { case: caseData };
+    const topK = getOptionalNumber(data, "top_k");
     if (topK !== undefined) payload.top_k = topK;
     return payload;
   }
@@ -552,11 +599,6 @@
         errors.push(`${label ? label.textContent.replace("необязательно", "").trim() : field.name}: проверьте числовое значение и допустимый диапазон.`);
       }
     });
-    const fineMultiple = form.elements.fine_multiple;
-    if (fineMultiple.value.trim() !== "" && Number(fineMultiple.value) <= 0) {
-      fineMultiple.setAttribute("aria-invalid", "true");
-      errors.push("Кратность штрафа должна быть больше нуля.");
-    }
     if (errors.length) {
       replaceContent(
         formErrors,
@@ -592,11 +634,11 @@
     form.setAttribute("aria-busy", String(value));
   }
 
-  async function submitAnalysis(payload) {
+  async function submitAnalysis() {
     if (isSubmitting || !validateForm()) return;
     let focusTokenAfterRequest = false;
     writeToken(tokenInput.value.trim());
-    lastRequest = payload || buildRequest();
+    const payload = buildRequest(new FormData(form));
     currentAnalysis = null;
     clearAnalysisModelInfo();
     setSubmitting(true);
@@ -607,7 +649,7 @@
     requestStatus.textContent = "Запрос отправлен. Форма заблокирована до получения ответа.";
 
     try {
-      const response = await apiRequest("/analyses", { method: "POST", body: lastRequest });
+      const response = await apiRequest("/analyses", { method: "POST", body: payload });
       validateAnalysisResponse(response);
       currentAnalysis = response;
       renderAnalysis(response);
@@ -641,6 +683,7 @@
 
   function renderAnalysis(data) {
     document.getElementById("analysis-id").textContent = data.analysis_id || "Не возвращён API";
+    renderRecommendation(data.recommendation);
     renderLegalChecks(data.legal_checks);
     renderAppealRisk(data.appeal_risk);
     renderSummary(data.punishment_summary, data.analogues);
@@ -648,6 +691,60 @@
     renderAnalogues(data.analogues, data.model_info);
     renderWarnings(data.warnings);
     renderAnalysisModelInfo(data.model_info);
+  }
+
+  function renderRecommendation(recommendation) {
+    const container = document.getElementById("recommendation-content");
+    const children = [];
+    const synthetic = recommendation.data_source === "synthetic";
+    const rangeLabel = synthetic ? "Диапазон по примерам" : "Диапазон по аналогам";
+    if (synthetic) {
+      children.push(createElement("p", { className: "recommendation-provenance", text: "Демонстрационные данные" }));
+    }
+    if (recommendation.status === "available") {
+      children.push(createRecommendationOption(recommendation, rangeLabel, true));
+    } else if (recommendation.alternatives.length) {
+      children.push(createElement("p", { className: "recommendation-form", text: "У выборки нет явного лидера" }));
+      children.push(...recommendation.alternatives.map((option) => createRecommendationOption(option, rangeLabel, false)));
+    } else {
+      children.push(createElement("p", { className: "recommendation-form", text: "Рекомендация недоступна" }));
+    }
+    const matchingLabel = synthetic ? "Совпавшие примеры" : "Совпавшие дела";
+    const counts = [
+      `${matchingLabel} — ${formatNumber(recommendation.matching_cases)}`,
+      `Пригодные исходы — ${formatNumber(recommendation.usable_outcomes)}`
+    ];
+    if (!recommendation.alternatives.length) counts.push(`Исходы в расчёте — ${formatNumber(recommendation.selected_outcomes)}`);
+    children.push(createElement("p", { className: "recommendation-counts", text: counts.join(" · ") }));
+    if (recommendation.reasons.length) {
+      children.push(createElement("ul", { className: "recommendation-reasons" }, recommendation.reasons.map((reason) => createElement("li", { text: reason }))));
+    }
+    replaceContent(container, ...children);
+  }
+
+  function createRecommendationOption(option, rangeLabel, primary) {
+    const imprisonment = option.kind === "imprisonment";
+    const form = imprisonment ? "Лишение свободы" : "Штраф";
+    const executions = { conditional: "условное осуждение", actual: "реальное исполнение", unspecified: "порядок исполнения не определён" };
+    const execution = imprisonment ? ` · ${executions[option.execution]}` : "";
+    const formatMeasure = imprisonment ? (value) => formatNumber(value, " мес.") : formatMoney;
+    const range = `${formatMeasure(option.range_min)} – ${formatMeasure(option.range_max)}`;
+    const measureLabels = imprisonment ? ["Рекомендуемый срок", "Медианный срок"] : ["Рекомендуемый размер штрафа", "Медианный размер штрафа"];
+    const metrics = [
+      [measureLabels[primary ? 0 : 1], formatMeasure(option.suggested_value)],
+      [rangeLabel, range]
+    ];
+    const card = createElement("div", { className: "recommendation-option" }, [
+      createElement("p", { className: "recommendation-form", text: `${form}${execution}` }),
+      createElement("dl", { className: "recommendation-metrics" }, metrics.map(([label, value]) => createElement("div", {}, [
+        createElement("dt", { text: label }),
+        createElement("dd", { text: value })
+      ])))
+    ]);
+    if (!primary) {
+      card.append(createElement("p", { className: "recommendation-counts", text: `Исходы в расчёте — ${formatNumber(option.selected_outcomes)}` }));
+    }
+    return card;
   }
 
   function normalizeMessage(item) {
@@ -778,7 +875,7 @@
 
   function getPunishment(analogue) {
     if (!isObject(analogue)) return {};
-    const nested = firstValue(analogue, ["punishment", "sentence", "draft_punishment"]);
+    const nested = firstValue(analogue, ["punishment", "sentence"]);
     return { ...analogue, ...(isObject(nested) ? nested : {}) };
   }
 
@@ -1068,7 +1165,7 @@
     });
 
     document.getElementById("retry-analysis").addEventListener("click", () => {
-      submitAnalysis(buildRequest());
+      submitAnalysis();
     });
 
     document.getElementById("reset-form").addEventListener("click", () => {
@@ -1084,7 +1181,6 @@
       emptyState.hidden = false;
       printButton.hidden = true;
       currentAnalysis = null;
-      lastRequest = null;
       clearAnalysisModelInfo();
       requestStatus.textContent = "Форма и результаты очищены. Токен доступа сохранён.";
       form.elements.article_part.focus();
@@ -1139,6 +1235,7 @@
   if (typeof module !== "undefined" && module.exports) {
     module.exports = {
       apiRequest,
+      buildRequest,
       validateAnalysisResponse,
       getApiErrorMessage,
       formatSummaryMetric,

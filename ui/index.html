@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
-  <meta name="description" content="Справочный анализ судебной практики и проекта наказания">
-  <title>Судебная аналитика — анализ проекта наказания</title>
+  <meta name="description" content="Судебные аналоги и справочная рекомендация по обстоятельствам дела">
+  <title>Судебная аналитика — анализ судебной практики</title>
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/app.js" defer></script>
 </head>
@@ -23,7 +23,7 @@
         </span>
         <span>
           <span class="brand-title">Судебная аналитика</span>
-          <span class="brand-subtitle">Анализ проекта наказания</span>
+          <span class="brand-subtitle">Анализ судебной практики</span>
         </span>
       </a>
       <div class="header-actions">
@@ -45,7 +45,7 @@
       <div>
         <p class="eyebrow">Рабочее пространство</p>
         <h1 id="page-title">Анализ судебной практики</h1>
-        <p class="page-description">Сопоставьте обстоятельства дела и проект наказания с релевантными судебными актами.</p>
+        <p class="page-description">Укажите обстоятельства дела по ст. 290 УК РФ, чтобы найти аналоги и получить справочную рекомендацию по наказанию.</p>
       </div>
       <button class="button button-secondary button-compact" id="refresh-status" type="button">
         <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M13 5V2m0 3h-3M3 11v3m0-3h3m6.1-5A6 6 0 0 0 2.7 4.7M3.9 10a6 6 0 0 0 9.4 1.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -55,7 +55,7 @@
 
     <aside class="disclaimer" aria-label="Важная информация">
       <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10 9v5M10 6v.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <p><strong>Результат носит исключительно справочный характер.</strong> Он не является юридическим заключением или рекомендацией по приговору. Решение по делу принимает судья.</p>
+      <p><strong>Рекомендация отражает исходы дел в выборке.</strong> Применимость наказания к конкретному делу определяет суд.</p>
     </aside>
 
     <div class="workspace">
@@ -72,7 +72,7 @@
           <div id="form-errors" class="form-errors" role="alert" tabindex="-1" hidden></div>
 
           <fieldset class="form-section">
-            <legend><span>1</span> Обстоятельства дела</legend>
+            <legend>Обстоятельства дела</legend>
             <div class="field field-full">
               <label for="article-part">Часть ст. 290 УК РФ <span class="required" aria-hidden="true">*</span></label>
               <select id="article-part" name="article_part" required aria-describedby="article-hint">
@@ -88,7 +88,7 @@
             </div>
             <div class="field-grid">
               <div class="field">
-                <label for="amount-rub">Сумма, ₽ <span class="optional">необязательно</span></label>
+                <label for="amount-rub">Сумма взятки, ₽ <span class="optional">необязательно</span></label>
                 <input id="amount-rub" name="amount_rub" type="number" min="0" max="1000000000000" step="0.01" inputmode="decimal" placeholder="0">
               </div>
               <div class="field">
@@ -96,16 +96,17 @@
                 <input id="episodes" name="episodes" type="number" min="1" max="1000" step="1" inputmode="numeric" value="1">
               </div>
             </div>
-            <div class="check-grid case-flags">
+            <div class="check-grid case-flags" role="group" aria-label="Известные условия дела" aria-describedby="case-flags-hint">
               <label class="check-control"><input type="checkbox" name="special_order"><span>Особый порядок</span></label>
               <label class="check-control"><input type="checkbox" name="pretrial_agreement"><span>Досудебное соглашение</span></label>
-              <label class="check-control"><input type="checkbox" name="art_64"><span>Ст. 64 УК РФ</span></label>
-              <label class="check-control"><input type="checkbox" name="art_69"><span>Ст. 69 УК РФ</span></label>
+              <label class="check-control"><input type="checkbox" name="art_64"><span>Исключительные обстоятельства (ст. 64 УК РФ)</span></label>
+              <label class="check-control"><input type="checkbox" name="art_69"><span>Совокупность преступлений (ст. 69 УК РФ)</span></label>
             </div>
+            <p class="field-hint" id="case-flags-hint">Отмечайте известные обстоятельства и процессуальные условия.</p>
           </fieldset>
 
           <fieldset class="form-section">
-            <legend><span>2</span> Смягчающие обстоятельства</legend>
+            <legend>Смягчающие обстоятельства</legend>
             <div class="check-grid factors-grid">
               <label class="check-control"><input type="checkbox" name="mitigating" value="явка с повинной"><span>Явка с повинной</span></label>
               <label class="check-control"><input type="checkbox" name="mitigating" value="содействие расследованию"><span>Содействие расследованию</span></label>
@@ -133,35 +134,8 @@
             </div>
           </fieldset>
 
-          <fieldset class="form-section">
-            <legend><span>3</span> Проект наказания</legend>
-            <div class="field-grid">
-              <div class="field">
-                <label for="prison-months">Лишение свободы, мес.</label>
-                <input id="prison-months" name="prison_months" type="number" min="0" max="1200" step="any" inputmode="decimal" placeholder="Не указано">
-              </div>
-              <div class="field">
-                <label for="fine-rub">Штраф, ₽</label>
-                <input id="fine-rub" name="fine_rub" type="number" min="0" max="1000000000000" step="0.01" inputmode="decimal" placeholder="Не указан">
-              </div>
-              <div class="field">
-                <label for="fine-multiple">Кратность штрафа</label>
-                <input id="fine-multiple" name="fine_multiple" type="number" min="0.000001" max="1000" step="any" inputmode="decimal" placeholder="Больше 0" aria-describedby="fine-multiple-hint">
-                <p class="field-hint" id="fine-multiple-hint">Положительное значение, больше нуля.</p>
-              </div>
-              <div class="field">
-                <label for="ban-years">Ограничение деятельности, лет</label>
-                <input id="ban-years" name="ban_years" type="number" min="0" max="100" step="any" inputmode="decimal" placeholder="Не указано">
-              </div>
-            </div>
-            <div class="check-grid case-flags punishment-flags">
-              <label class="check-control"><input type="checkbox" name="conditional"><span>Условное осуждение</span></label>
-              <label class="check-control"><input type="checkbox" name="confiscation"><span>Конфискация имущества</span></label>
-            </div>
-          </fieldset>
-
           <fieldset class="form-section settings-section">
-            <legend><span>4</span> Параметры анализа</legend>
+            <legend>Параметры анализа</legend>
             <div class="field field-full field-short">
               <label for="top-k">Количество аналогов</label>
               <input id="top-k" name="top_k" type="number" min="1" max="50" step="1" required value="10" inputmode="numeric">
@@ -227,27 +201,26 @@
             <svg viewBox="0 0 32 32" width="32" height="32"><path d="M7 4h12l6 6v18H7V4Zm12 0v7h6M11 17h10M11 21h10M11 13h4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </div>
           <h3>Анализ ещё не выполнен</h3>
-          <p>Заполните карточку дела и проект наказания. Здесь появятся проверки, судебные аналоги и фактические сведения моделей.</p>
-          <ol class="empty-steps">
-            <li><span>1</span>Укажите квалификацию и обстоятельства</li>
-            <li><span>2</span>Внесите проект наказания</li>
-            <li><span>3</span>Запустите анализ и проверьте источники</li>
-          </ol>
-          <p class="state-note">При недоступности API система покажет ошибку и не будет подставлять демонстрационные результаты.</p>
+          <p>Заполните карточку дела и запустите анализ. Здесь появятся судебные аналоги и рекомендация, если данных достаточно.</p>
         </section>
 
         <div id="analysis-results" hidden tabindex="-1">
+          <section class="result-section recommendation-section" aria-labelledby="recommendation-title">
+            <div class="result-section-heading"><h3 id="recommendation-title">Рекомендация по аналогам</h3></div>
+            <div id="recommendation-content"></div>
+            <p class="recommendation-note">Применимые пределы наказания требуют отдельной правовой проверки.</p>
+          </section>
+
           <div class="analysis-meta">
             <div>
               <span class="meta-label">Идентификатор анализа</span>
               <code id="analysis-id">—</code>
             </div>
-            <span class="reference-badge">Справочный результат</span>
           </div>
 
           <section class="result-section" aria-labelledby="legal-title">
             <div class="result-section-heading">
-              <h3 id="legal-title">Юридические проверки</h3>
+              <h3 id="legal-title">Формальные проверки</h3>
               <span class="result-count" id="legal-count">0</span>
             </div>
             <div id="legal-checks"></div>

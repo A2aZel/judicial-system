@@ -14,7 +14,9 @@ def require(condition: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
-def check(base_url: str, timeout: float, api_key: str | None) -> tuple[int, int]:
+def check(
+    base_url: str, timeout: float, api_key: str | None, require_recommendation: bool = False
+) -> tuple[int, int, str]:
     def fetch(path: str, payload: dict | None = None) -> tuple[bytes, str]:
         headers = {"Accept": "application/json"}
         if api_key:
@@ -67,11 +69,6 @@ def check(base_url: str, timeout: float, api_key: str | None) -> tuple[int, int]
                 "mitigating": [],
                 "aggravating": [],
             },
-            "draft_punishment": {
-                "prison_months": 24,
-                "conditional": False,
-                "confiscation": False,
-            },
             "top_k": 3,
         },
     )
@@ -103,7 +100,39 @@ def check(base_url: str, timeout: float, api_key: str | None) -> tuple[int, int]
         and analysis.get("appeal_risk", {}).get("score") is None,
         "analysis: unexpected appeal risk result",
     )
-    return records, len(analogues)
+    legal_checks = analysis.get("legal_checks", [])
+    require(
+        not any(check.get("status") == "error" for check in legal_checks),
+        "analysis: facts-only request failed draft validation",
+    )
+    recommendation = analysis.get("recommendation", {})
+    status = recommendation.get("status")
+    require(status in {"available", "unavailable"}, "analysis: invalid recommendation status")
+    require(
+        recommendation.get("legal_status") == "not_checked" and bool(recommendation.get("reasons")),
+        "analysis: invalid recommendation scope or explanation",
+    )
+    require(
+        recommendation.get("data_source") in {"synthetic", "case_corpus"},
+        "analysis: invalid recommendation data source",
+    )
+    require(not require_recommendation or status == "available", "analysis: no recommendation")
+    values = [recommendation.get(key) for key in ("range_min", "suggested_value", "range_max")]
+    if status == "available":
+        require(
+            all(
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+                and value > 0
+                for value in values
+            ),
+            "analysis: invalid recommendation values",
+        )
+        require(values == sorted(values), "analysis: recommendation lies outside its range")
+    else:
+        require(all(value is None for value in values), "analysis: unavailable recommendation has values")
+    return records, len(analogues), status
 
 
 def main() -> int:
@@ -111,12 +140,18 @@ def main() -> int:
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--timeout", type=float, default=10)
     parser.add_argument("--api-key-env", default="JUDICIAL_AI_API_KEY")
+    parser.add_argument(
+        "--require-recommendation", action="store_true", help="require a supported outcome"
+    )
     args = parser.parse_args()
     if args.timeout <= 0 or not math.isfinite(args.timeout):
         parser.error("--timeout must be finite and greater than zero")
     try:
-        records, analogues = check(
-            args.base_url, args.timeout, os.environ.get(args.api_key_env)
+        records, analogues, recommendation = check(
+            args.base_url,
+            args.timeout,
+            os.environ.get(args.api_key_env),
+            args.require_recommendation,
         )
     except urllib.error.HTTPError as exc:
         print(f"Smoke failed: HTTP {exc.code}", file=sys.stderr)
@@ -128,7 +163,10 @@ def main() -> int:
         message = str(exc) if isinstance(exc, RuntimeError) else type(exc).__name__
         print(f"Smoke failed: {message}", file=sys.stderr)
         return 1
-    print(f"Smoke passed: records={records}, analogues={analogues}, ranked=true, risk=unavailable")
+    print(
+        f"Smoke passed: records={records}, analogues={analogues}, ranked=true, "
+        f"risk=unavailable, recommendation={recommendation}"
+    )
     return 0
 
 

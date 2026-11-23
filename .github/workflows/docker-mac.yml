@@ -67,7 +67,7 @@ jobs:
             sleep 1
           done
           test "$ready" = true
-          python3 tools/docker_smoke.py --base-url http://127.0.0.1:8000
+          python3 tools/docker_smoke.py --base-url http://127.0.0.1:8000 --require-recommendation
           docker exec judicial-mac-smoke python -c 'import torch; assert torch.version.cuda is None; print("CPU-only PyTorch:", torch.__version__)'
       - name: Log in to GHCR after successful smoke
         uses: docker/login-action@v3

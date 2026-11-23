@@ -2,10 +2,12 @@ import csv
 import logging
 import time
 import uuid
+from pathlib import Path
 
 from judicial_ai import __version__
 from judicial_ai.analogues.dense import DenseAnalogueFinder, DenseEncoder, DenseSearch
 from judicial_ai.analogues.knn import KNNAnalogueFinder
+from judicial_ai.analogues.recommendation import recommend_punishment
 from judicial_ai.analogues.summary import summarize_punishment
 from judicial_ai.case_card import AnalysisCard, CaseCard
 from judicial_ai.config import Settings
@@ -26,6 +28,7 @@ from judicial_ai.schemas.analysis import (
 )
 
 logger = logging.getLogger(__name__)
+SYNTHETIC_FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "synthetic_analysis.csv"
 
 
 class AnalysisService:
@@ -49,6 +52,12 @@ class AnalysisService:
         self._dense_finder = dense_finder
         self._startup_warnings = startup_warnings
         self._corpus_source = corpus_source
+        self._recommendation_source = (
+            "synthetic"
+            if corpus_available and corpus_source == "analysis_csv"
+            and settings.corpus_path.resolve() == SYNTHETIC_FIXTURE.resolve()
+            else "case_corpus"
+        )
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "AnalysisService":
@@ -122,15 +131,16 @@ class AnalysisService:
     def analyze(self, request: AnalysisRequest) -> AnalysisResponse:
         started = time.monotonic()
         analysis_id = str(uuid.uuid4())
-        card = AnalysisCard(
-            case=CaseCard.from_input(request.case),
-            draft=request.draft_punishment,
+        case = CaseCard.from_input(request.case)
+        legal_checks = (
+            self._legal_validator.validate_case(case)
+            if request.draft_punishment is None
+            else self._legal_validator.validate(AnalysisCard(case, request.draft_punishment))
         )
-        legal_checks = self._legal_validator.validate(card)
         top_k = request.top_k or self.settings.default_top_k
-        structured = self._finder.search(card.case, top_k)
+        structured = self._finder.search(case, top_k)
         dense_search = (
-            self._dense_finder.search(card.case, structured, self._finder, top_k)
+            self._dense_finder.search(case, structured, self._finder, top_k)
             if self._dense_finder is not None
             else None
         )
@@ -158,19 +168,27 @@ class AnalysisService:
             *self._startup_warnings,
             *result.warnings,
         ]
+        if any(not record.recommendation_facts_trusted for record in structured.cohort):
+            warnings.append(
+                "Сумма, число эпизодов и обстоятельства из полных текстов приговоров "
+                "могут требовать проверки. Эти поля используются для просмотра аналогов."
+            )
         if not self._corpus_available:
             warnings.append("Корпус недоступен; поиск аналогов не выполнялся.")
         if self._skipped_records:
             warnings.append(
                 f"При загрузке корпуса пропущено записей с некорректными полями: {self._skipped_records}."
             )
-        risk = self._risk_model.predict_appeal_risk(card.case.narrative)
+        risk = self._risk_model.predict_appeal_risk(case.narrative)
         response = AnalysisResponse(
             analysis_id=analysis_id,
             legal_checks=legal_checks,
             analogues=analogues,
             punishment_summary=summarize_punishment(
                 result.cohort, len(result.neighbors)
+            ),
+            recommendation=recommend_punishment(
+                case, structured.cohort, self._recommendation_source
             ),
             appeal_risk=risk,
             warnings=warnings,

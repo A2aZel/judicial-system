@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,3 +21,9 @@ class CaseRecord:
     conditional: bool | None = None
     confiscation: bool | None = None
     source_order: int = 0
+    principal_punishment: Literal["imprisonment", "fine"] | None = None
+    principal_value: float | None = None
+    principal_conditional: bool | None = None
+    recommendation_facts_trusted: bool = True
+    recommendation_group: str | None = None
+    recommendation_text_hash: str | None = None

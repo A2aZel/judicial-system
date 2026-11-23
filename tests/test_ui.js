@@ -19,6 +19,25 @@ function booleanSummary() {
   return { count: 0, true_count: 0, rate: null };
 }
 
+function unavailableRecommendation() {
+  return {
+    status: "unavailable",
+    kind: null,
+    execution: null,
+    suggested_value: null,
+    range_min: null,
+    range_max: null,
+    unit: null,
+    matching_cases: 1,
+    usable_outcomes: 1,
+    selected_outcomes: 0,
+    alternatives: [],
+    data_source: "case_corpus",
+    reasons: ["Недостаточно наблюдений"],
+    legal_status: "not_checked"
+  };
+}
+
 function validAnalysis() {
   return {
     analysis_id: "analysis-1",
@@ -43,6 +62,7 @@ function validAnalysis() {
       confiscation: booleanSummary()
     },
     appeal_risk: { status: "unavailable", score: null, reasons: ["Нет checkpoint"], model: null },
+    recommendation: unavailableRecommendation(),
     warnings: [],
     model_info: { engine_version: "1.0.0", knn: { ready: true }, bert: { status: "unavailable" } }
   };
@@ -103,6 +123,123 @@ test("AnalysisResponse: валидный ответ принимается, не
   assert.throws(() => ui.validateAnalysisResponse(numericString), /analogues\[0\]\.distance/);
 });
 
+test("AnalysisResponse: нужна рекомендация API даже при наличии сводки", () => {
+  const response = validAnalysis();
+  delete response.recommendation;
+  assert.throws(() => ui.validateAnalysisResponse(response), /recommendation/);
+});
+
+test("AnalysisResponse: недоступная рекомендация не содержит вида, диапазона или меры", () => {
+  for (const [field, value] of [
+    ["kind", "fine"],
+    ["execution", "conditional"],
+    ["suggested_value", 0],
+    ["range_min", 1000],
+    ["range_max", undefined],
+    ["unit", "rub"],
+    ["selected_outcomes", 1],
+    ["alternatives", undefined],
+    ["data_source", "unknown"],
+    ["reasons", [false]],
+    ["legal_status", "passed"]
+  ]) {
+    const response = validAnalysis();
+    response.recommendation[field] = value;
+    assert.throws(() => ui.validateAnalysisResponse(response), new RegExp(`recommendation\\.${field}`));
+  }
+});
+
+test("AnalysisResponse: форма, диапазон и число наблюдений согласованы", () => {
+  const response = validAnalysis();
+  response.recommendation = {
+    ...response.recommendation,
+    status: "available", kind: "imprisonment", execution: "conditional",
+    suggested_value: 36, range_min: 24, range_max: 48, unit: "months",
+    matching_cases: 7, usable_outcomes: 5, selected_outcomes: 4,
+    reasons: ["Условное лишение свободы чаще всего встречается среди сопоставимых исходов"],
+    legal_status: "not_checked"
+  };
+  assert.equal(ui.validateAnalysisResponse(response), response);
+
+  for (const [field, value] of [
+    ["suggested_value", 50],
+    ["range_min", -10],
+    ["range_max", "48"],
+    ["execution", null],
+    ["unit", "rub"],
+    ["matching_cases", 4],
+    ["usable_outcomes", 3],
+    ["selected_outcomes", 0]
+  ]) {
+    const invalid = { ...response, recommendation: { ...response.recommendation, [field]: value } };
+    assert.throws(() => ui.validateAnalysisResponse(invalid), /recommendation\./);
+  }
+
+  response.recommendation = {
+    ...response.recommendation, kind: "fine", execution: null, unit: "rub",
+    suggested_value: 150000, range_min: 100000, range_max: 250000
+  };
+  assert.equal(ui.validateAnalysisResponse(response), response);
+  response.recommendation.execution = "conditional";
+  assert.throws(() => ui.validateAnalysisResponse(response), /recommendation\.execution/);
+});
+
+test("AnalysisResponse: равная поддержка описывает два разных варианта без основной рекомендации", () => {
+  const response = validAnalysis();
+  const prison = {
+    kind: "imprisonment", execution: "unspecified", suggested_value: 36,
+    range_min: 24, range_max: 48, unit: "months", selected_outcomes: 3
+  };
+  const fine = {
+    kind: "fine", execution: null, suggested_value: 150000,
+    range_min: 100000, range_max: 250000, unit: "rub", selected_outcomes: 3
+  };
+  response.recommendation = {
+    ...response.recommendation, matching_cases: 7, usable_outcomes: 6,
+    alternatives: [prison, fine], data_source: "synthetic"
+  };
+  assert.equal(ui.validateAnalysisResponse(response), response);
+  for (const alternatives of [
+    [prison],
+    [prison, prison],
+    [prison, { ...fine, selected_outcomes: 4 }],
+    [prison, { ...fine, selected_outcomes: 2 }],
+    [prison, { ...fine, range_min: 200000 }]
+  ]) {
+    const invalid = { ...response, recommendation: { ...response.recommendation, alternatives } };
+    assert.throws(() => ui.validateAnalysisResponse(invalid), /recommendation\.alternatives/);
+  }
+
+  response.recommendation = { ...response.recommendation, ...prison, status: "available" };
+  assert.throws(() => ui.validateAnalysisResponse(response), /recommendation\.alternatives/);
+});
+
+test("Анализ отправляет обстоятельства дела и параметры поиска", () => {
+  const fields = new FormData();
+  for (const [name, value] of [
+    ["article_part", "3"],
+    ["amount_rub", "150000"],
+    ["episodes", "1"],
+    ["special_order", "on"],
+    ["art_69", "on"],
+    ["mitigating", "раскаяние"],
+    ["mitigating", "явка с повинной"],
+    ["aggravating", "рецидив преступлений"],
+    ["narrative", "  Один эпизод  "],
+    ["top_k", "10"],
+    ["prison_months", "72"],
+    ["conditional", "on"]
+  ]) fields.append(name, value);
+  assert.deepEqual(ui.buildRequest(fields), {
+    case: {
+      article_part: "3", amount_rub: 150000, episodes: 1,
+      special_order: true, pretrial_agreement: false, art_64: false, art_69: true,
+      mitigating: ["раскаяние", "явка с повинной"], aggravating: ["рецидив преступлений"], narrative: "Один эпизод"
+    },
+    top_k: 10
+  });
+});
+
 test("API: HTML 200 и invalid JSON не считаются успешным ответом", async () => {
   global.fetch = async () => mockResponse({ contentType: "text/html", text: "<html>not JSON</html>" });
   await assert.rejects(() => ui.apiRequest("/analyses", { method: "POST", body: {} }), /не в формате JSON/);
@@ -143,12 +280,12 @@ test("422: payload.errors имеет приоритет над общим detail
     detail: "Request validation failed",
     errors: [
       { loc: ["body", "case", "narrative"], msg: "String should have at most 4000 characters", type: "string_too_long" },
-      { loc: ["body", "draft_punishment", "fine_multiple"], msg: "Input should be greater than 0", type: "greater_than" }
+      { loc: ["body", "top_k"], msg: "Input should be greater than 0", type: "greater_than" }
     ]
   });
   assert.match(message, /case → narrative/);
   assert.match(message, /4000/);
-  assert.match(message, /fine_multiple/);
+  assert.match(message, /top_k/);
   assert.doesNotMatch(message, /Request validation failed/);
 });
 
@@ -209,17 +346,18 @@ test("Уровни проверок доступны текстом, включ�
   assert.equal(ui.severityLabel("not_checked"), "Проверка не выполнена");
 });
 
-test("Форма соответствует API: ст.290 части 1–6 и числовые лимиты", () => {
+test("Форма соответствует API: ст. 290 части 1–6 и только данные дела", () => {
   const html = fs.readFileSync(path.join(__dirname, "../ui/index.html"), "utf8");
   const select = html.match(/<select id="article-part"[\s\S]*?<\/select>/)[0];
   const values = [...select.matchAll(/<option value="([1-6])">/g)].map((match) => match[1]);
   assert.deepEqual(values, ["1", "2", "3", "4", "5", "6"]);
   assert.doesNotMatch(html, /ст\. 158/);
   assert.match(html, /name="narrative"[^>]*maxlength="4000"/);
-  assert.match(html, /name="prison_months"[^>]*max="1200"[^>]*step="any"/);
-  const fineMultiple = html.match(/<input id="fine-multiple"[^>]*>/)[0];
-  assert.ok(Number(fineMultiple.match(/min="([^"]+)"/)[1]) > 0);
-  assert.match(fineMultiple, /max="1000"/);
+  assert.match(html, /name="amount_rub"[^>]*max="1000000000000"[^>]*step="0\.01"/);
+  assert.match(html, /name="episodes"[^>]*max="1000"/);
+  assert.doesNotMatch(html, /name="(?:prison_months|fine_rub|fine_multiple|ban_years|conditional|confiscation)"/);
+  assert.ok(html.indexOf('id="recommendation-title"') > 0);
+  assert.ok(html.indexOf('id="recommendation-title"') < html.indexOf('id="legal-title"'));
 });
 
 test("Мобильный API status остаётся видимым текстом", () => {
