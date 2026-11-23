@@ -1,0 +1,60 @@
+services:
+  api:
+    image: ghcr.io/a2azel/judicial-system:mac8gb
+    build:
+      context: .
+    command:
+      - python
+      - -m
+      - uvicorn
+      - app:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --workers
+      - "1"
+      - --no-access-log
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    environment:
+      JUDICIAL_AI_APP_ENV: "${JUDICIAL_AI_APP_ENV:-development}"
+      JUDICIAL_AI_API_KEY: "${JUDICIAL_AI_API_KEY:-}"
+      JUDICIAL_AI_LOG_LEVEL: "${JUDICIAL_AI_LOG_LEVEL:-INFO}"
+      JUDICIAL_AI_CORPUS_PATH: "${JUDICIAL_AI_CORPUS_PATH:-/app/fixtures/synthetic_analysis.csv}"
+      JUDICIAL_AI_PROCESSED_REPOSITORY_PATH: /data/processed/retrieval_cases.jsonl
+      JUDICIAL_AI_DENSE_INDEX_PATH: /data/processed/dense-index.npz
+      JUDICIAL_AI_DENSE_MANIFEST_PATH: /data/processed/model-card.json
+      JUDICIAL_AI_DENSE_ENABLED: "${JUDICIAL_AI_DENSE_ENABLED:-true}"
+      JUDICIAL_AI_DENSE_MODEL_ID: "${JUDICIAL_AI_DENSE_MODEL_ID:-deepvk/USER-bge-m3}"
+      JUDICIAL_AI_DENSE_MODEL_REVISION: "${JUDICIAL_AI_DENSE_MODEL_REVISION:-0cc6cfe48e260fb0474c753087a69369e88709ae}"
+      JUDICIAL_AI_DENSE_WEIGHT: "${JUDICIAL_AI_DENSE_WEIGHT:-0.7}"
+      JUDICIAL_AI_DENSE_BATCH_SIZE: "1"
+      JUDICIAL_AI_DENSE_MAX_TOKENS: "1024"
+      JUDICIAL_AI_BERT_RISK_ENABLED: "false"
+      JUDICIAL_AI_BERT_CACHE_DIR: /models
+      HF_HOME: /models
+      HF_HUB_CACHE: /models
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      NUMEXPR_NUM_THREADS: "2"
+      TOKENIZERS_PARALLELISM: "false"
+    volumes:
+      - "${JUDICIAL_AI_DATA_DIR:-./data}:/data:ro"
+      - "${JUDICIAL_AI_MODEL_CACHE:-model_cache}:/models"
+    mem_limit: 4g
+    cpus: 2.0
+    pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    init: true
+    restart: unless-stopped
+
+volumes:
+  model_cache:

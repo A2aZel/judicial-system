@@ -1,6 +1,6 @@
 # Judicial AI — structured analysis backend
 
-Версионируемый движок на FastAPI: формальные проверки черновика наказания и детерминированный поиск аналогов по структурированным признакам `analysis.csv`. Qwen и генеративные ответы не используются. Lazy encoder — `deepvk/RuModernBERT-base`; appeal risk по умолчанию выключен.
+Приложение подбирает аналоги по ст. 290 УК РФ и по обстоятельствам дела рассчитывает ориентир по основному наказанию. Результат включает вид, диапазон из практики, типичный срок или размер штрафа и обоснование. При заданной сумме взятки в расчёт входят только дела с сопоставимой известной суммой. Структурный kNN использует доступные проверенные числовые признаки. Qwen не загружается.
 
 **Это не production-ready судебная рекомендательная система.** Извлечение CSV автоматическое и не проверено вручную в полном объёме. Формальные проверки не заменяют юриста, не проверяют санкции по редакции закона и не устанавливают причинность. Аналоги — описательная статистика небольшой выборки, а не прогноз решения суда.
 
@@ -24,6 +24,8 @@ python -m pip install --require-hashes -r requirements-dev-lock.txt
 - Health: <http://localhost:8000/api/v1/health>
 - UI: <http://localhost:8000/> (`ui/index.html`, если файл существует)
 - Статика UI: `/static/*`
+
+Для пробы выберите часть 3, укажите сумму 150 000 ₽ и один эпизод, оставьте остальные условия по умолчанию и нажмите «Выполнить анализ». Приложение подставит результат по загруженному корпусу. Поле «Краткие обстоятельства» дополнительно включает текстовый поиск в списке аналогов при наличии индекса.
 
 По умолчанию читается `corpus/sudact/analysis.csv`. Сырой корпус не копируется в тесты или Docker-образ; `fixtures/synthetic_analysis.csv` полностью синтетический.
 
@@ -64,15 +66,55 @@ JUDICIAL_AI_API_KEY=replace-with-a-secret-from-your-secret-manager
 ```bash
 docker build -t judicial-ai:0.1.0 .
 docker run --rm -p 127.0.0.1:8000:8000 \
+  -e JUDICIAL_AI_CORPUS_PATH=/data/analysis.csv \
   -v "$PWD/corpus/sudact/analysis.csv:/data/analysis.csv:ro" \
   -v judicial_model_cache:/models judicial-ai:0.1.0
 ```
 
+### Mac: Apple Silicon и Intel, включая 8 ГБ RAM
+
+Нужен Docker Desktop для вашей архитектуры Mac. Пока изменения не влиты в `main`, используйте feature-ветку:
+
+```bash
+git clone --branch feat/docker-mac-knn --single-branch https://github.com/A2aZel/judicial-system.git
+cd judicial-system
+cp .env.mac.example .env.mac
+mkdir -p data
+docker compose --env-file .env.mac -f compose.mac.yaml up --build -d
+```
+
+Откройте <http://localhost:8000/>. Это существующий UI и kNN backend. Первый запуск использует **синтетический CSV**, а не реальный судебный корпус. Для него не скачиваются модели. Qwen и генеративные ответы отсутствуют; appeal risk выключен.
+
+После успешной публикации workflow `Docker Mac CPU` можно взять готовый образ без локальной сборки:
+
+```bash
+docker compose --env-file .env.mac -f compose.mac.yaml pull
+docker compose --env-file .env.mac -f compose.mac.yaml up --no-build -d
+```
+
+Образ `ghcr.io/a2azel/judicial-system:mac8gb` содержит `linux/arm64` для Apple Silicon и `linux/amd64` для Intel; Docker выбирает платформу автоматически. Вычисления выполняются на CPU Linux: MPS/Metal внутри этого контейнера не используется. Тег `sha-<полный commit SHA>` позволяет закрепить конкретную сборку. `latest` этим workflow не публикуется.
+
+Проверка, логи и остановка:
+
+```bash
+docker compose --env-file .env.mac -f compose.mac.yaml exec api python tools/docker_smoke.py --base-url http://127.0.0.1:8000
+docker compose --env-file .env.mac -f compose.mac.yaml logs -f api
+docker compose --env-file .env.mac -f compose.mac.yaml down
+```
+
+Для переноса реальных данных скопируйте **всю** локальную папку `corpus/processed/` в `data/processed/`, включая `retrieval_cases.jsonl`, `model-card.json` и `dense-index-generations/` со всеми файлами активного поколения. Отдельного `model-card.json` или одного NPZ недостаточно. CSV необязателен; для собственного CSV положите его в `data/analysis.csv` и задайте в `.env.mac` `JUDICIAL_AI_CORPUS_PATH=/data/analysis.csv`. Перезапустите сервис командой `up -d --force-recreate` с теми же `--env-file` и `-f`.
+
+Папка `data/` монтируется read-only в `/data`; она и реальные дела не входят в образ. При наличии корректного processed JSONL сохраняются structured kNN и dense retrieval с существующими фильтрами. Dense query с непустой фабулой использует pinned `deepvk/USER-bge-m3`; первая такая операция может скачать веса в отдельный именованный volume `model_cache`. Для переноса уже скачанного совместимого Hugging Face cache укажите в `JUDICIAL_AI_MODEL_CACHE` в `.env.mac` полный путь к его writable папке `hub`, например `/Users/you/.cache/huggingface/hub`. Не публикуйте реальные processed-данные и кэш весов.
+
+На Mac с 8 ГБ RAM начальный бюджет Docker VM — примерно 4–5 ГБ, сервис ограничен 4 ГБ и 2 CPU, dense batch size — 1. Это настройки бюджета, а не измеренный peak RAM или гарантия времени ответа на Mac. Первый dense-запрос включает загрузку модели и может быть долгим; при нехватке памяти можно задать `JUDICIAL_AI_DENSE_ENABLED=false` и сохранить structured kNN либо использовать машину с большим объёмом RAM.
+
 ### Воспроизводимость образа
 
-Обе стадии используют `python:3.12.10-slim` с реальным linux/amd64 manifest digest `sha256:97983fa8cc88343512862c62307159a82261c3528dc025f79e5a3f7af43e50b4`, полученным через `docker buildx imagetools inspect python:3.12.10-slim`. Образ намеренно фиксирует linux/amd64.
+Обе стадии используют `python:3.12.10-slim` с закреплённым multi-platform index digest `sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db`. Docker выбирает соответствующий Linux manifest для amd64 или arm64; принудительная эмуляция amd64 на Apple Silicon не требуется.
 
-`requirements-lock.txt` содержит 50 runtime-пакетов, `requirements-dev-lock.txt` — 53 dev-пакета, включая транзитивные зависимости и полученные из registry SHA256. `torch==2.13.0+cpu` разрешён из `https://download.pytorch.org/whl/cpu`; CUDA/NVIDIA wheels не входят в lock. Docker и CI используют `--require-hashes`.
+`requirements-lock.txt` закрепляет runtime для Linux amd64, `requirements-arm64-lock.txt` — для Linux arm64, `requirements-dev-lock.txt` — dev-среду amd64. Все lock-файлы включают транзитивные зависимости и SHA256 из registry. PyTorch устанавливается из CPU index `https://download.pytorch.org/whl/cpu`; CUDA/NVIDIA wheels в образ не входят. Docker выбирает lock по `TARGETARCH` и устанавливает его с `--require-hashes`.
+
+Workflow [Docker Mac CPU](https://github.com/A2aZel/judicial-system/actions/workflows/docker-mac.yml) собирает каждую архитектуру на нативном runner, запускает HTTP smoke с синтетическими записями и проверяет CPU-only PyTorch. Только после проверки публикуется тот же образ; общий manifest `mac8gb` и `sha-<commit>` создаётся после успеха обеих архитектур. Используется встроенный `GITHUB_TOKEN` с `packages: write`, отдельный registry secret не нужен. Первый GHCR package по умолчанию private: для анонимного `pull` владелец должен установить ему public visibility в настройках package ([GitHub Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#pushing-container-images)).
 
 Перегенерация lock после осознанного обновления прямых зависимостей:
 
@@ -81,13 +123,20 @@ uv pip compile requirements.txt --python-platform x86_64-manylinux_2_28 \
   --python-version 3.12 --torch-backend cpu --generate-hashes \
   --emit-index-url --emit-index-annotation --annotation-style line \
   --output-file requirements-lock.txt
+uv pip compile requirements.txt --constraint requirements-lock.txt \
+  --python-platform aarch64-manylinux_2_28 \
+  --python-version 3.12 --torch-backend cpu \
+  --extra-index-url https://download.pytorch.org/whl/cpu \
+  --index-strategy unsafe-best-match --generate-hashes \
+  --emit-index-url --emit-index-annotation --annotation-style line \
+  --output-file requirements-arm64-lock.txt
 uv pip compile requirements-dev.txt --python-platform x86_64-manylinux_2_28 \
   --python-version 3.12 --torch-backend cpu --generate-hashes \
   --emit-index-url --emit-index-annotation --annotation-style line \
   --output-file requirements-dev-lock.txt
 ```
 
-После генерации сохраните `--extra-index-url https://download.pytorch.org/whl/cpu` в обоих lock-файлах: `uv` указывает CPU index в provenance torch, но не всегда эмитит его как глобальную опцию.
+После генерации сохраните `--extra-index-url https://download.pytorch.org/whl/cpu` во всех lock-файлах: `uv` указывает CPU index в provenance torch, но не всегда эмитит его как глобальную опцию.
 
 ## Конфигурация
 
@@ -128,19 +177,13 @@ uv pip compile requirements-dev.txt --python-platform x86_64-manylinux_2_28 \
     "aggravating": [],
     "narrative": null
   },
-  "draft_punishment": {
-    "prison_months": 24,
-    "fine_rub": null,
-    "fine_multiple": null,
-    "ban_years": 2,
-    "conditional": false,
-    "confiscation": false
-  },
   "top_k": 5
 }
 ```
 
-Ответ содержит `analysis_id`, `legal_checks`, `analogues`, `punishment_summary`, `appeal_risk`, `warnings`, `model_info`. В аналоге есть только `distance` и исходы наказания — нет ID документа, УИД, ФИО, названия суда или текста. `analysis_id` — новый UUID запроса, не идентификатор дела.
+Ответ содержит `recommendation`, `analysis_id`, `legal_checks`, `analogues`, `punishment_summary`, `appeal_risk`, `warnings`, `model_info`. В аналоге есть только `distance` и исходы наказания. `analysis_id` обозначает запрос. Старые клиенты могут передать `draft_punishment` для формальных проверок черновика. Это поле не участвует в расчёте ориентира.
+
+`recommendation` содержит вид основного наказания, медиану, первый и третий квартили, единицы измерения и основания расчёта. Для одного предложения нужен вид с большинством среди распознанных исходов и как минимум три сопоставимых наблюдения по нему. При равной поддержке двух видов с достаточным числом исходов показываются оба варианта. При недостатке данных ответ объясняет причину. `top_k` задаёт количество аналогов на экране и не меняет расчёт. Синтетическая выборка обозначается в интерфейсе как демонстрационная.
 
 `distance` может быть `null`, если внутри cohort нет активных различающих признаков. В этом случае ranking отключён, а список является лишь неранжированной подвыборкой размером до `top_k`.
 
@@ -172,9 +215,13 @@ ASGI middleware ограничивает суммарное число байт 
 
 В текущем `analysis.csv` нет этих числовых колонок. Булевы режимы уже константны после hard filters, поэтому ranking отключается: `distance=null`, warning, неранжированный список и cohort-статистика. Движок не придумывает суммы или эпизоды. Поле `conditional` — автоматический proxy из `art_73`, требующий ручной проверки. Отсутствие срока/штрафа в CSV может быть следствием извлечения или обезличивания, а не отсутствия наказания.
 
+Для ориентира по наказанию нужны отдельно установленные вид и величина основного наказания. Из старых JSONL исход извлекается автоматически из однозначной резолютивной формулировки. Одно дело учитывается один раз. При заданной сумме расчёт использует дела с известным размером взятки в диапазоне от одной трети до трёх введённых сумм. Сумма берётся из проверенного поля или явно выделяется в описании установленных обстоятельств.
+
+Каждая отметка смягчающего или отягчающего обстоятельства добавляет критерий отбора. Для рекомендации подходят дела, где подтверждены все выбранные виды. Из старых JSONL приложение извлекает их только из формулировок, где суд прямо учитывает или признаёт соответствующее обстоятельство. Для проверенных JSONL укажите названия из формы в группах `facts.mitigating` и `facts.aggravating` при `facts.recommendation_facts_trusted=true`. В подготовленном CSV названия задаются в необязательных колонках `mitigating_factors` и `aggravating_factors` в виде JSON-массивов строк. При нехватке сопоставимых исходов отображается причина. Общая сводка по группе и список аналогов рассчитываются отдельно.
+
 ## Правовой модуль
 
-Проверяются только полнота основного наказания, формальная связь условного режима со сроком, неоднозначная одновременная запись штрафа в рублях и кратной величине, а также предупреждение при `art_69=true` и одном эпизоде. Пределы санкций, действующая редакция закона, квалификация и обязательные обстоятельства имеют статус `not_checked`.
+По обстоятельствам проверяется согласованность числа эпизодов и флага ст. 69. Если клиент передал черновик, дополнительно проверяются его полнота, связь условного режима со сроком и способ записи штрафа. Пределы санкций по применимой редакции закона, квалификация и обязательные дополнительные наказания имеют статус `not_checked`. Диапазон в предложении показывает наблюдавшуюся практику. Для проверки применимых правовых границ нужны дополнительные сведения и отдельные правила. [Постановление Пленума ВС № 58, пп. 34, 59–62](https://www.vsrf.ru/media-proxy/upload/iblock/aca/tozewdcjp1nkjyu6dvx0cgq710g21f7m.pdf).
 
 ## Encoder и appeal risk
 
@@ -229,7 +276,7 @@ docker compose config --quiet
 python -c "from fastapi.testclient import TestClient; from app import app; c=TestClient(app); print(c.get('/api/v1/health').json())"
 ```
 
-UI-тесты используют только встроенный Node test runner, отдельных npm-зависимостей нет. CI использует hashed dev lock для pytest, запускает UI regression tests на Node 24 и отдельно выполняет Docker build. Для production ещё нужны независимая юридическая проверка правил и данных, обучение/калибровка/внешняя валидация и одобрение risk artifact, управление секретами, TLS/reverse proxy, rate limiting, мониторинг, резервное копирование и нагрузочные проверки.
+UI-тесты используют только встроенный Node test runner, отдельных npm-зависимостей нет. CI использует hashed dev lock для pytest, запускает UI regression tests на Node 24 и отдельно проверяет запущенный Docker-контейнер через stdlib HTTP smoke, без dev-зависимости `httpx` в runtime. Для production ещё нужны независимая юридическая проверка правил и данных, обучение/калибровка/внешняя валидация и одобрение risk artifact, управление секретами, TLS/reverse proxy, rate limiting, мониторинг, резервное копирование и нагрузочные проверки.
 
 
 ## Dense kNN (`deepvk/USER-bge-m3`)

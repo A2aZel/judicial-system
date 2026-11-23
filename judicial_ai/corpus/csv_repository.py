@@ -1,9 +1,16 @@
 import csv
+import json
 import logging
 import math
 from pathlib import Path
 
+from judicial_ai.corpus.punishment_outcome import (
+    ARTICLE_290_PARTS,
+    UNKNOWN_OUTCOME,
+    explicit_principal_outcome,
+)
 from judicial_ai.corpus.records import CaseRecord
+from judicial_ai.factors import FactorGroup, verified_factor_list
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +67,15 @@ def _int(value: str | None, minimum: int, maximum: int) -> int | None:
     return int(parsed)
 
 
+def _verified_factors(value: str | None, group: FactorGroup) -> frozenset[str] | None:
+    if not value or not value.strip():
+        return None
+    parsed = json.loads(value)
+    if not isinstance(parsed, list):
+        raise ValueError("verified factors must be a JSON list")
+    return verified_factor_list(parsed, group)
+
+
 class CsvCorpusRepository:
     def __init__(self, path: Path):
         self.path = path
@@ -83,13 +99,27 @@ class CsvCorpusRepository:
                     parts = tuple(part for part in (row["parts_290"] or "").split("|") if part)
                     if not parts:
                         continue
+                    art_69 = _bool(row["art_69"])
+                    principal = UNKNOWN_OUTCOME
+                    if (
+                        len(parts) == 1
+                        and parts[0] in ARTICLE_290_PARTS
+                        and not art_69
+                        and not row.get("other_articles")
+                    ):
+                        principal = explicit_principal_outcome(
+                            (row.get("principal_punishment") or "").strip().lower() or None,
+                            _float(row.get("principal_value"), 1_000_000_000_000),
+                            _optional_bool(row.get("principal_conditional")),
+                        )
+                    principal_punishment, principal_value, principal_conditional = principal
                     records.append(
                         CaseRecord(
                             article_parts=parts,
                             special_order=_bool(row["special_order"]),
                             pretrial_agreement=_bool(row["pretrial_agreement"]),
                             art_64=_bool(row["art_64"]),
-                            art_69=_bool(row["art_69"]),
+                            art_69=art_69,
                             amount_rub=_float(row.get("amount_rub"), 1_000_000_000_000),
                             episodes=_int(row.get("episodes"), 1, 1000),
                             mitigating_count=_int(row.get("mitigating_count"), 0, 30),
@@ -102,6 +132,12 @@ class CsvCorpusRepository:
                             conditional=_optional_bool(row.get("art_73")),
                             confiscation=_optional_bool(row.get("confiscation")),
                             source_order=order,
+                            principal_punishment=principal_punishment,
+                            principal_value=principal_value,
+                            principal_conditional=principal_conditional,
+                            recommendation_group=(row.get("verdict_group_id") or "").strip() or None,
+                            recommendation_mitigating=_verified_factors(row.get("mitigating_factors"), "mitigating"),
+                            recommendation_aggravating=_verified_factors(row.get("aggravating_factors"), "aggravating"),
                         )
                     )
                 except (TypeError, ValueError, OverflowError):
